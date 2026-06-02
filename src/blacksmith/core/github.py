@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from collections.abc import Callable
+from typing import Any, Literal, TypeVar, cast
 
 from githubkit import GitHub
 from githubkit.exception import RequestFailed
@@ -12,8 +13,9 @@ from blacksmith.core.exceptions import GitHubAPIError
 
 _log = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
-ChangedFile = DiffEntry  # githubkit's typed model is exactly what we need
+type ChangedFile = DiffEntry
 
 __all__ = [
     "ChangedFile",
@@ -46,12 +48,12 @@ class GitHubClient:
 
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
         owner, name = self._split_repo(repo)
-        return self._call(
-            self._gh.rest.pulls.get,
-            owner=owner,
-            repo=name,
-            pull_number=number,
+        response = self._guard(
+            lambda: self._gh.rest.pulls.get(owner=owner, repo=name, pull_number=number),
+            verb="GET",
+            url=f"/repos/{repo}/pulls/{number}",
         )
+        return response.parsed_data
 
     def list_pull_request_files(
         self,
@@ -61,13 +63,14 @@ class GitHubClient:
         per_page: int = 100,
     ) -> list[ChangedFile]:
         owner, name = self._split_repo(repo)
-        return self._call(
-            self._gh.rest.pulls.list_files,
-            owner=owner,
-            repo=name,
-            pull_number=number,
-            per_page=per_page,
+        response = self._guard(
+            lambda: self._gh.rest.pulls.list_files(
+                owner=owner, repo=name, pull_number=number, per_page=per_page,
+            ),
+            verb="GET",
+            url=f"/repos/{repo}/pulls/{number}/files",
         )
+        return response.parsed_data
 
     def get_raw_content(self, repo: str, path: str, ref: str) -> str | None:
         owner, name = self._split_repo(repo)
@@ -88,16 +91,26 @@ class GitHubClient:
 
     def create_review(self, repo: str, number: int, review: ReviewBody) -> None:
         owner, name = self._split_repo(repo)
-        try:
-            self._gh.rest.pulls.create_review(
+        comments = cast(
+            Any,
+            [
+                {"path": c.path, "line": c.line, "side": c.side, "body": c.body}
+                for c in review.comments
+            ],
+        )
+        self._guard(
+            lambda: self._gh.rest.pulls.create_review(
                 owner=owner,
                 repo=name,
                 pull_number=number,
-                data=review.model_dump(mode="json"),
-            )
-        except RequestFailed as exc:
-            self._log_failure("POST", f"/repos/{owner}/{name}/pulls/{number}/reviews", exc)
-            raise GitHubAPIError(str(exc)) from exc
+                commit_id=review.commit_id,
+                body=review.body,
+                event=review.event,
+                comments=comments,
+            ),
+            verb="POST",
+            url=f"/repos/{repo}/pulls/{number}/reviews",
+        )
 
     @staticmethod
     def _split_repo(repo: str) -> tuple[str, str]:
@@ -106,12 +119,12 @@ class GitHubClient:
             raise GitHubAPIError(f"invalid repo identifier: {repo!r}")
         return owner, name
 
-    @staticmethod
-    def _call(method, **kwargs):
+    @classmethod
+    def _guard(cls, fn: Callable[[], T], *, verb: str, url: str) -> T:
         try:
-            return method(**kwargs).parsed_data
+            return fn()
         except RequestFailed as exc:
-            _log.error("GitHub API %s failed: %s\n%s", method.__name__, exc, exc.response.text)
+            cls._log_failure(verb, url, exc)
             raise GitHubAPIError(str(exc)) from exc
 
     @staticmethod

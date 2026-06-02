@@ -64,7 +64,8 @@ class ReviewerAction(Action):
             return 0
 
         anchor_map = {
-            f.filename: self._diff_parser.anchorable_lines(f.patch) for f in reviewable
+            f.filename: self._diff_parser.anchorable_lines(self._patch_text(f))
+            for f in reviewable
         }
         rules = self._github.get_raw_content(
             self._config.repo, self._github.RULES_PATH, pr.head.sha
@@ -95,9 +96,13 @@ class ReviewerAction(Action):
 
     @classmethod
     def _is_reviewable(cls, file: ChangedFile) -> bool:
-        if file.status == "removed" or not file.patch:
+        if file.status == "removed" or not cls._patch_text(file):
             return False
         dot = file.filename.rfind(".")
         if dot < 0:
             return False
         return file.filename[dot:] in cls.ALLOWED_EXTS
+
+    @staticmethod
+    def _patch_text(file: ChangedFile) -> str | None:
+        return file.patch if isinstance(file.patch, str) else None

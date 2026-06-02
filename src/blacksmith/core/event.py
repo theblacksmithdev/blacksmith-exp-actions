@@ -5,16 +5,19 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from githubkit.versions.latest.webhooks import IssueCommentEvent, PullRequestEvent
+from pydantic import TypeAdapter, ValidationError
 
 from blacksmith.core.exceptions import ConfigError
 
+_PULL_REQUEST_EVENT_ADAPTER: TypeAdapter[PullRequestEvent] = TypeAdapter(PullRequestEvent)
+_ISSUE_COMMENT_EVENT_ADAPTER: TypeAdapter[IssueCommentEvent] = TypeAdapter(IssueCommentEvent)
 
-class EventContext(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    event_name: str
-    payload: dict[str, Any]
+class EventContext:
+    def __init__(self, event_name: str, payload: dict[str, Any]) -> None:
+        self._event_name = event_name
+        self._payload = payload
 
     @classmethod
     def from_env(cls) -> EventContext:
@@ -29,14 +32,23 @@ class EventContext(BaseModel):
         return cls(event_name=event_name, payload=payload)
 
     @property
+    def event_name(self) -> str:
+        return self._event_name
+
+    @property
     def pr_number(self) -> int | None:
-        if self.event_name == "pull_request":
-            pull = self.payload.get("pull_request") or {}
-            number = pull.get("number")
-            return int(number) if number is not None else None
-        if self.event_name == "issue_comment":
-            issue = self.payload.get("issue") or {}
-            if issue.get("pull_request"):
-                number = issue.get("number")
-                return int(number) if number is not None else None
+        if self._event_name == "pull_request":
+            try:
+                pr_event = _PULL_REQUEST_EVENT_ADAPTER.validate_python(self._payload)
+            except ValidationError:
+                return None
+            return pr_event.pull_request.number
+        if self._event_name == "issue_comment":
+            try:
+                comment_event = _ISSUE_COMMENT_EVENT_ADAPTER.validate_python(self._payload)
+            except ValidationError:
+                return None
+            if comment_event.issue.pull_request is None:
+                return None
+            return comment_event.issue.number
         return None

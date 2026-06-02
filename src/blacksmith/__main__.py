@@ -1,47 +1,45 @@
 from __future__ import annotations
 
-import argparse
-import sys
+import typer
 
 import blacksmith.actions  # noqa: F401  (side-effect: action registration)
 from blacksmith.actions.registry import ActionRegistry
 from blacksmith.core.exceptions import BlacksmithError
 from blacksmith.core.logging import LoggingConfigurator
 
-
-class Cli:
-    PROG = "blacksmith"
-
-    def __init__(self, argv: list[str] | None = None) -> None:
-        self._argv = argv
-
-    def run(self) -> int:
-        LoggingConfigurator().configure()
-        args = self._parse_args()
-        try:
-            action_cls = ActionRegistry.get(args.action)
-            action = action_cls.from_env()
-            return action.run()
-        except BlacksmithError as exc:
-            print(f"{self.PROG}: {exc}", file=sys.stderr)
-            return 1
-
-    def _parse_args(self) -> argparse.Namespace:
-        parser = argparse.ArgumentParser(
-            prog=self.PROG,
-            description="Blacksmith Dev GitHub Actions runner.",
-        )
-        parser.add_argument(
-            "action",
-            choices=ActionRegistry.names(),
-            help="The Blacksmith action to run.",
-        )
-        return parser.parse_args(self._argv)
+app = typer.Typer(
+    name="blacksmith",
+    help="Blacksmith Experience Actions runner.",
+    no_args_is_help=True,
+    add_completion=False,
+)
 
 
-def main() -> int:
-    return Cli().run()
+@app.callback()
+def _root() -> None:
+    """Run a registered Blacksmith action."""
+
+
+@app.command()
+def reviewer() -> None:
+    """Run the senior-engineer code review on the triggering pull request."""
+    _dispatch("reviewer")
+
+
+def _dispatch(name: str) -> None:
+    LoggingConfigurator().configure()
+    try:
+        action_cls = ActionRegistry.get(name)
+        exit_code = action_cls.from_env().run()
+    except BlacksmithError as exc:
+        typer.echo(f"blacksmith: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    raise typer.Exit(code=exit_code)
+
+
+def main() -> None:
+    app()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

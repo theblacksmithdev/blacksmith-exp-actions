@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal, TypeVar
+from typing import Literal, TypeVar, cast
 
 from openai import APIError, OpenAI
+from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
 from blacksmith.core.exceptions import InferenceError
@@ -33,10 +34,13 @@ class GitHubModelsClient:
         response_format: type[T],
         temperature: float | None = None,
     ) -> T:
+        message_params = cast(
+            list[ChatCompletionMessageParam], [m.model_dump() for m in messages]
+        )
         try:
             completion = self._client.beta.chat.completions.parse(
                 model=model,
-                messages=[m.model_dump() for m in messages],
+                messages=message_params,
                 response_format=response_format,
                 temperature=self.DEFAULT_TEMPERATURE if temperature is None else temperature,
             )
