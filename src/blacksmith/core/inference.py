@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Literal, TypeVar
 
+from openai import APIError, OpenAI
 from pydantic import BaseModel
 
-from blacksmith.core.exceptions import HttpError, InferenceError
-from blacksmith.core.http import HttpClient
+from blacksmith.core.exceptions import InferenceError
 
 _log = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class Message(BaseModel):
@@ -20,28 +22,28 @@ class GitHubModelsClient:
     BASE_URL = "https://models.github.ai/inference"
     DEFAULT_TEMPERATURE = 0.2
 
-    def __init__(self, http_client: HttpClient) -> None:
-        self._http = http_client
+    def __init__(self, token: str) -> None:
+        self._client = OpenAI(api_key=token, base_url=self.BASE_URL)
 
-    def chat_completion(
+    def parse(
         self,
+        *,
         model: str,
         messages: list[Message],
-        *,
+        response_format: type[T],
         temperature: float | None = None,
-    ) -> str:
-        body = {
-            "model": model,
-            "messages": [m.model_dump() for m in messages],
-            "temperature": self.DEFAULT_TEMPERATURE if temperature is None else temperature,
-        }
+    ) -> T:
         try:
-            response = self._http.post(f"{self.BASE_URL}/chat/completions", json=body)
-        except HttpError as exc:
-            _log.error("GitHub Models call failed: %s\n%s", exc, exc.response_text)
+            completion = self._client.beta.chat.completions.parse(
+                model=model,
+                messages=[m.model_dump() for m in messages],
+                response_format=response_format,
+                temperature=self.DEFAULT_TEMPERATURE if temperature is None else temperature,
+            )
+        except APIError as exc:
+            _log.error("GitHub Models inference failed: %s", exc)
             raise InferenceError(str(exc)) from exc
-        payload = response.json()
-        try:
-            return payload["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise InferenceError(f"unexpected inference response shape: {payload}") from exc
+        parsed = completion.choices[0].message.parsed
+        if parsed is None:
+            raise InferenceError("inference returned no parsed structured output")
+        return parsed

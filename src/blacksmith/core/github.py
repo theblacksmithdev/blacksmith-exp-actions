@@ -3,37 +3,25 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from githubkit import GitHub
+from githubkit.exception import RequestFailed
+from githubkit.versions.latest.models import DiffEntry, PullRequest
+from pydantic import BaseModel, Field
 
-from blacksmith.core.exceptions import GitHubAPIError, HttpError
-from blacksmith.core.http import HttpClient
+from blacksmith.core.exceptions import GitHubAPIError
 
 _log = logging.getLogger(__name__)
 
 
-class _PRHead(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    sha: str
+ChangedFile = DiffEntry  # githubkit's typed model is exactly what we need
 
-
-class PullRequest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    number: int
-    title: str = ""
-    head: _PRHead
-
-    @property
-    def head_sha(self) -> str:
-        return self.head.sha
-
-
-class ChangedFile(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    filename: str
-    status: str
-    patch: str | None = None
+__all__ = [
+    "ChangedFile",
+    "GitHubClient",
+    "PullRequest",
+    "ReviewBody",
+    "ReviewComment",
+]
 
 
 class ReviewComment(BaseModel):
@@ -51,19 +39,19 @@ class ReviewBody(BaseModel):
 
 
 class GitHubClient:
-    BASE_URL = "https://api.github.com"
-    JSON_ACCEPT = "application/vnd.github+json"
-    RAW_ACCEPT = "application/vnd.github.raw"
+    RULES_PATH = ".blacksmith/REVIEW.md"
 
-    def __init__(self, http_client: HttpClient) -> None:
-        self._http = http_client
+    def __init__(self, token: str) -> None:
+        self._gh = GitHub(token)
 
     def get_pull_request(self, repo: str, number: int) -> PullRequest:
-        response = self._http.get(
-            f"{self.BASE_URL}/repos/{repo}/pulls/{number}",
-            headers={"Accept": self.JSON_ACCEPT},
+        owner, name = self._split_repo(repo)
+        return self._call(
+            self._gh.rest.pulls.get,
+            owner=owner,
+            repo=name,
+            pull_number=number,
         )
-        return PullRequest.model_validate(response.json())
 
     def list_pull_request_files(
         self,
@@ -72,30 +60,60 @@ class GitHubClient:
         *,
         per_page: int = 100,
     ) -> list[ChangedFile]:
-        response = self._http.get(
-            f"{self.BASE_URL}/repos/{repo}/pulls/{number}/files?per_page={per_page}",
-            headers={"Accept": self.JSON_ACCEPT},
+        owner, name = self._split_repo(repo)
+        return self._call(
+            self._gh.rest.pulls.list_files,
+            owner=owner,
+            repo=name,
+            pull_number=number,
+            per_page=per_page,
         )
-        return [ChangedFile.model_validate(item) for item in response.json()]
 
     def get_raw_content(self, repo: str, path: str, ref: str) -> str | None:
-        url = f"{self.BASE_URL}/repos/{repo}/contents/{path}?ref={ref}"
+        owner, name = self._split_repo(repo)
+        url = f"/repos/{owner}/{name}/contents/{path}"
         try:
-            response = self._http.get(url, headers={"Accept": self.RAW_ACCEPT})
-        except HttpError as exc:
-            if exc.status_code == 404:
+            response = self._gh.request(
+                "GET",
+                url,
+                params={"ref": ref},
+                headers={"Accept": "application/vnd.github.raw"},
+            )
+        except RequestFailed as exc:
+            if exc.response.status_code == 404:
                 return None
-            _log.error("GitHub raw content failed: %s\n%s", exc, exc.response_text)
+            self._log_failure("GET", url, exc)
             raise GitHubAPIError(str(exc)) from exc
         return response.text
 
     def create_review(self, repo: str, number: int, review: ReviewBody) -> None:
+        owner, name = self._split_repo(repo)
         try:
-            self._http.post(
-                f"{self.BASE_URL}/repos/{repo}/pulls/{number}/reviews",
-                json=review.model_dump(mode="json"),
-                headers={"Accept": self.JSON_ACCEPT},
+            self._gh.rest.pulls.create_review(
+                owner=owner,
+                repo=name,
+                pull_number=number,
+                data=review.model_dump(mode="json"),
             )
-        except HttpError as exc:
-            _log.error("Posting review failed: %s\n%s", exc, exc.response_text)
+        except RequestFailed as exc:
+            self._log_failure("POST", f"/repos/{owner}/{name}/pulls/{number}/reviews", exc)
             raise GitHubAPIError(str(exc)) from exc
+
+    @staticmethod
+    def _split_repo(repo: str) -> tuple[str, str]:
+        owner, _, name = repo.partition("/")
+        if not owner or not name:
+            raise GitHubAPIError(f"invalid repo identifier: {repo!r}")
+        return owner, name
+
+    @staticmethod
+    def _call(method, **kwargs):
+        try:
+            return method(**kwargs).parsed_data
+        except RequestFailed as exc:
+            _log.error("GitHub API %s failed: %s\n%s", method.__name__, exc, exc.response.text)
+            raise GitHubAPIError(str(exc)) from exc
+
+    @staticmethod
+    def _log_failure(verb: str, url: str, exc: RequestFailed) -> None:
+        _log.error("GitHub %s %s failed: %s\n%s", verb, url, exc, exc.response.text)

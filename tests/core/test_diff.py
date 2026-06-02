@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from blacksmith.core.diff import DiffParser
 
-FIXTURE_PATCH = """@@ -1,3 +1,5 @@
+FIXTURE_PATCH = """@@ -1,3 +1,4 @@
  line1
 -line2_old
 +line2_new

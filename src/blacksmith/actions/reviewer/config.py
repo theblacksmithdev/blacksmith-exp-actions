@@ -1,43 +1,36 @@
 from __future__ import annotations
 
-import os
-from typing import ClassVar
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from blacksmith.actions.reviewer.severity import Severity
 from blacksmith.core.exceptions import ConfigError
 
 
-class ReviewerConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    DEFAULT_MODEL: ClassVar[str] = "openai/gpt-4o-mini"
+class ReviewerConfig(BaseSettings):
+    model_config = SettingsConfigDict(case_sensitive=False, frozen=True, extra="ignore")
 
     github_token: str
     repo: str
-    model: str
-    min_severity: Severity
+    model: str = "openai/gpt-4o-mini"
+    min_severity: Severity = Severity.LOW
+
+    @field_validator("min_severity", mode="before")
+    @classmethod
+    def _coerce_severity(cls, value: Any) -> Severity:
+        if isinstance(value, Severity):
+            return value
+        if isinstance(value, int):
+            return Severity(value)
+        if isinstance(value, str):
+            return Severity.parse(value)
+        raise ValueError(f"invalid severity: {value!r}")
 
     @classmethod
     def from_env(cls) -> ReviewerConfig:
-        token = os.environ.get("GITHUB_TOKEN") or ""
-        repo = os.environ.get("REPO") or ""
-        model = os.environ.get("MODEL") or cls.DEFAULT_MODEL
-        min_sev_raw = os.environ.get("MIN_SEVERITY") or "low"
-
-        if not token:
-            raise ConfigError("GITHUB_TOKEN is not set")
-        if not repo:
-            raise ConfigError("REPO is not set")
         try:
-            min_severity = Severity.parse(min_sev_raw)
-        except ValueError as exc:
+            return cls()
+        except Exception as exc:
             raise ConfigError(str(exc)) from exc
-
-        return cls(
-            github_token=token,
-            repo=repo,
-            model=model,
-            min_severity=min_severity,
-        )
