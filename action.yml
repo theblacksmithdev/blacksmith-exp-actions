@@ -1,0 +1,43 @@
+name: "Blacksmith — Reviewer"
+description: "Senior-engineer code review on pull requests for the Blacksmith Experience apprenticeship team, powered by GitHub Models."
+author: "blacksmith-dev"
+
+branding:
+  icon: check-circle
+  color: orange
+
+inputs:
+  model:
+    description: "GitHub Models catalog id (e.g. openai/gpt-4o-mini)."
+    required: false
+    default: "openai/gpt-4o-mini"
+  github-token:
+    description: "Token used for GitHub Models inference and posting the review."
+    required: false
+    default: ${{ github.token }}
+  min-severity:
+    description: "Lowest severity to post: low | medium | high | critical."
+    required: false
+    default: "low"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install Blacksmith
+      shell: bash
+      run: pip install --quiet "$GITHUB_ACTION_PATH"
+
+    - name: Run reviewer
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        EVENT_NAME: ${{ github.event_name }}
+        MODEL: ${{ inputs.model }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+      run: python -m blacksmith reviewer
