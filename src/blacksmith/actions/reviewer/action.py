@@ -18,10 +18,6 @@ from blacksmith.core.inference import GitHubModelsClient
 class ReviewerAction(Action):
     name: ClassVar[str] = "reviewer"
 
-    ALLOWED_EXTS: ClassVar[frozenset[str]] = frozenset({
-        ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rb", ".java", ".rs",
-    })
-
     def __init__(
         self,
         *,
@@ -96,12 +92,9 @@ class ReviewerAction(Action):
 
     @classmethod
     def _is_reviewable(cls, file: ChangedFile) -> bool:
-        if file.status == "removed" or not cls._patch_text(file):
+        if file.status == "removed":
             return False
-        dot = file.filename.rfind(".")
-        if dot < 0:
-            return False
-        return file.filename[dot:] in cls.ALLOWED_EXTS
+        return cls._patch_text(file) is not None
 
     @staticmethod
     def _patch_text(file: ChangedFile) -> str | None:

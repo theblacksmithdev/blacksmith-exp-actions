@@ -62,7 +62,7 @@ Example `.blacksmith/REVIEW.md`:
 You can raise the floor with the `min-severity` workflow input if you want only `high` and above. Your Experience setup may have configured this for you already.
 
 ### What files get reviewed
-Source files in: `.py .js .ts .tsx .jsx .go .rb .java .rs`. Everything else (docs, configs, lockfiles, assets) is skipped. Deleted files are skipped. If your PR only touches non-reviewable files, you'll see no review and that's expected.
+Every file with a textual diff — source code, configs, docs, migrations, Dockerfiles, shell scripts, SQL, YAML, Markdown, whatever. If the team would care about it in a real PR review, the team here will too. Binary files (GitHub doesn't produce a diff for those) and deleted files are skipped automatically; otherwise everything in your PR is on the table.
 
 ---
 
