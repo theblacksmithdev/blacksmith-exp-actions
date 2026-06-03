@@ -74,13 +74,19 @@ If your reviews suddenly stop appearing, the first thing to check is whether thi
 ### Day-to-day: automatic
 Just work the way you normally would. Every time you open a PR or push commits to one, a review is triggered. No action on your part.
 
-### On demand: `@lars-blacksmith-exp`
+### Talking to Lars in the thread: `@lars-blacksmith-exp`
 
-Want Lars to look again — maybe after a refactor, or because the first review felt off? Drop a comment anywhere in the PR thread mentioning **`@lars-blacksmith-exp`**:
+Lars can take part in the PR conversation. If you want him to look at a refactor, or you disagree with a finding, or you want to argue back on a call he made, just mention **`@lars-blacksmith-exp`** in any PR comment. He reads the thread he's been pinged on and replies in-line, the way a teammate would.
 
 ```
-@lars-blacksmith-exp can you take another look — I restructured the auth flow.
+@lars-blacksmith-exp this isn't actually wrong — the caller upstream already
+validates the input, see auth/middleware.py:42.
 ```
+
+A few notes on how he responds:
+- He reads the PR thread on this PR only. He won't remember other PRs, other conversations from yesterday, or things you discussed in your standup.
+- He'll change his mind out loud if you convince him. He won't soften his position to be polite if you don't.
+- He won't auto-trigger a fresh review when you mention him — to get a new review pass, push a new commit. Mentions are for conversation.
 
 A fresh review will appear within a few seconds.
 

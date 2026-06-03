@@ -6,7 +6,7 @@ from typing import Any, Literal, TypeVar, cast
 
 from githubkit import GitHub
 from githubkit.exception import RequestFailed
-from githubkit.versions.latest.models import DiffEntry, PullRequest
+from githubkit.versions.latest.models import DiffEntry, IssueComment, PullRequest
 from pydantic import BaseModel, Field
 
 from blacksmith.core.exceptions import GitHubAPIError
@@ -20,6 +20,7 @@ type ChangedFile = DiffEntry
 __all__ = [
     "ChangedFile",
     "GitHubClient",
+    "IssueComment",
     "PullRequest",
     "ReviewBody",
     "ReviewComment",
@@ -88,6 +89,29 @@ class GitHubClient:
             self._log_failure("GET", url, exc)
             raise GitHubAPIError(str(exc)) from exc
         return response.text
+
+    def list_issue_comments(
+        self, repo: str, number: int, *, per_page: int = 100
+    ) -> list[IssueComment]:
+        owner, name = self._split_repo(repo)
+        response = self._guard(
+            lambda: self._gh.rest.issues.list_comments(
+                owner=owner, repo=name, issue_number=number, per_page=per_page,
+            ),
+            verb="GET",
+            url=f"/repos/{repo}/issues/{number}/comments",
+        )
+        return response.parsed_data
+
+    def create_issue_comment(self, repo: str, number: int, body: str) -> None:
+        owner, name = self._split_repo(repo)
+        self._guard(
+            lambda: self._gh.rest.issues.create_comment(
+                owner=owner, repo=name, issue_number=number, body=body,
+            ),
+            verb="POST",
+            url=f"/repos/{repo}/issues/{number}/comments",
+        )
 
     def create_review(self, repo: str, number: int, review: ReviewBody) -> None:
         owner, name = self._split_repo(repo)
