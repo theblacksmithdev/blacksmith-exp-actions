@@ -43,7 +43,7 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-dev'))
     runs-on: ubuntu-latest
     steps:
-      - uses: blacksmith-dev/reviewer@v1
+      - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
         with:
           model: openai/gpt-4o-mini
           min-severity: low
@@ -53,7 +53,7 @@ What each piece does:
 - **`on: pull_request`** — runs when you open a PR or push more commits to it.
 - **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@blacksmith-dev` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
 - **`permissions`** — `pull-requests: write` lets the action post the review; `models: read` lets it call GitHub Models for inference.
-- **`uses: blacksmith-dev/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically.
+- **`uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically. The `/reviewer` segment selects the reviewer action from the monorepo; future actions live at sibling paths (e.g. `/triager`, `/standup`).
 - **`with:` inputs** — see the table below.
 
 #### Inputs you can tune
@@ -96,7 +96,7 @@ Example `.blacksmith/REVIEW.md`:
 If you want a stricter floor (only `high` and above, say) you can edit your workflow file:
 
 ```yaml
-      - uses: blacksmith-dev/reviewer@v1
+      - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
         with:
           model: openai/gpt-4o-mini
           min-severity: high
@@ -105,7 +105,7 @@ If you want a stricter floor (only `high` and above, say) you can edit your work
 Or switch the model:
 
 ```yaml
-      - uses: blacksmith-dev/reviewer@v1
+      - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
         with:
           model: openai/gpt-4o
           min-severity: low

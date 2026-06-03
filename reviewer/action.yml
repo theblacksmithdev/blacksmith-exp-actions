@@ -30,7 +30,7 @@ runs:
 
     - name: Install Blacksmith
       shell: bash
-      run: pip install --quiet "$GITHUB_ACTION_PATH"
+      run: pip install --quiet "$GITHUB_ACTION_PATH/.."
 
     - name: Run reviewer
       shell: bash

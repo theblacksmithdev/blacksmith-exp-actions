@@ -16,9 +16,13 @@ For the product-level context behind these decisions, see the **Blacksmith Exper
 
 ## Architecture
 
+This repo is a **monorepo of composite actions**. Each action lives at the repo root in its own subdirectory containing an `action.yml`. All actions share one Python package (`src/blacksmith`) installed once per action run via `pip install "$GITHUB_ACTION_PATH/.."`.
+
 ```
-action.yml                              # Reviewer composite action (root)
-pyproject.toml                          # Python package config
+reviewer/                               # Subdirectory action
+└── action.yml                          # Referenced as theblacksmithdev/blacksmith-exp-actions/reviewer@v1
+                                        # Future siblings: triager/action.yml, standup/action.yml, …
+pyproject.toml                          # Python package config (shared, at repo root)
 src/blacksmith/
 ├── __main__.py                         # typer CLI: `python -m blacksmith <action>`
 ├── core/                               # shared building blocks, reusable across all actions
@@ -40,7 +44,7 @@ src/blacksmith/
         └── severity.py                 # Severity enum
 tests/
 ├── core/test_diff.py
-└── actions/reviewer/test_findings.py, test_review.py
+└── actions/reviewer/test_findings.py, test_review.py, test_reviewable.py
 ```
 
 ### Planned layers (not yet built)
@@ -97,7 +101,7 @@ This calls real GitHub Models and posts a real review. Use against a throwaway P
 
 ## Adding a new action
 
-1. **Create the package**: `src/blacksmith/actions/<your_action>/action.py`
+1. **Create the Python package**: `src/blacksmith/actions/<your_action>/action.py`
 
    ```python
    from blacksmith.actions.base import Action
@@ -133,19 +137,45 @@ This calls real GitHub Models and posts a real review. Use against a throwaway P
 
 4. **Reuse `core/` plumbing** — don't re-implement HTTP, GitHub API, inference, diff parsing, event handling. That's the entire point of `core/`.
 
-5. **Ship a sibling repo** `blacksmith-dev/<your_action>` whose `action.yml` is:
+5. **Add the composite action**: create `<your_action>/action.yml` at the repo root with whatever inputs your action needs:
+
    ```yaml
+   name: "Blacksmith — <Your Action>"
+   description: "<one-line description>"
+   author: "blacksmith-dev"
+   branding:
+     icon: <pick one from feathericons>
+     color: orange
+
+   inputs:
+     github-token:
+       description: "Token used for inference and writing to GitHub."
+       required: false
+       default: ${{ github.token }}
+     # ... action-specific inputs
+
    runs:
-     using: composite
+     using: "composite"
      steps:
        - uses: actions/setup-python@v5
          with:
            python-version: "3.12"
-       - shell: bash
-         run: pip install --quiet "$GITHUB_ACTION_PATH"
-       - shell: bash
-         env: { ... }
+       - name: Install Blacksmith
+         shell: bash
+         run: pip install --quiet "$GITHUB_ACTION_PATH/.."
+       - name: Run <your_action>
+         shell: bash
+         env:
+           GITHUB_TOKEN: ${{ inputs.github-token }}
+           REPO: ${{ github.repository }}
+           EVENT_NAME: ${{ github.event_name }}
+           # ... map inputs to env vars your action's from_env() reads
          run: python -m blacksmith <your_action>
+   ```
+
+6. **Apprentices reference it** as:
+   ```yaml
+   uses: theblacksmithdev/blacksmith-exp-actions/<your_action>@v1
    ```
 
 ---
