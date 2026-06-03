@@ -42,14 +42,20 @@ src/blacksmith/
         ├── prompt.py                   # PromptBuilder
         ├── review.py                   # ReviewBuilder
         └── severity.py                 # Severity enum
+src/blacksmith/
+├── core/
+│   ├── persona.py                      # AgentPersona dataclass (slim mirror of main project)
+│   └── tracking.py                     # TrackingClient + ReviewPostedEvent
+├── personas/
+│   ├── __init__.py                     # exports LARS
+│   └── lars.py                         # vendored Lars persona
 tests/
-├── core/test_diff.py
-└── actions/reviewer/test_findings.py, test_review.py, test_reviewable.py
+├── core/test_diff.py, test_persona.py, test_tracking.py
+└── actions/reviewer/test_findings.py, test_review.py, test_reviewable.py, test_prompt.py
 ```
 
 ### Planned layers (not yet built)
 
-- `src/blacksmith/personas/` — persona definitions (name, voice, opinions, developmental mandate).
 - `src/blacksmith/core/auth.py` — `GitHubAppAuth` for per-persona installation tokens.
 - `src/blacksmith/core/competency.py` — writer for the competency-state store.
 
@@ -224,6 +230,38 @@ The workflow needs the App's private key at job start. Three options, blast-radi
 3. **Centralized token broker.** Workflow uses GitHub OIDC (`id-token: write`, free, no setup) to prove "I'm running in workflow X of repo Y at commit Z." Sends OIDC token to a Blacksmith-hosted endpoint that validates the claim, confirms the App is installed on repo Y, mints a scoped installation token using the private key it holds, returns it. Private key never leaves Blacksmith infrastructure. Apprentice repos hold zero secrets. Real infra to deploy and operate (~100 LOC service + uptime monitoring).
 
 The current README workflow assumes option 1. Before this ships to real apprentices outside vetted cohorts, pick 2 or 3.
+
+---
+
+## Engagement tracking
+
+The reviewer emits a `review_posted` event after every successful review post, attributing it to the apprentice via `project-id` (UUID, passed as a repo secret). The payload is structured (see `src/blacksmith/core/tracking.py:ReviewPostedEvent`):
+
+```json
+{
+  "project_id": "<UUID>",
+  "repo": "owner/name",
+  "pr_number": 42,
+  "commit_sha": "...",
+  "model": "openai/gpt-4o-mini",
+  "findings_total": 3,
+  "findings_by_severity": {"high": 1, "low": 2},
+  "mention_triggered": false
+}
+```
+
+The receiver endpoint on the main Blacksmith Experience project has not been built yet — see `TODO(blacksmith-experience)` in `src/blacksmith/core/tracking.py`. Until `tracking-url` is set on the action input, emits are no-op'd by `TrackingClient.enabled`. The action does not fail when the endpoint is down — tracking is best-effort and a failed emit logs a warning but lets the review-posted flow succeed.
+
+### The other half: engagement signals
+
+`review_posted` is what the action itself can see. The interesting signals come *after* the workflow finishes:
+
+- Apprentice replies to a Lars comment in a PR thread → engaged
+- Apprentice marks a conversation resolved without replying → dismissed
+- Apprentice pushes a follow-up commit that touches the flagged line → addressed (silently)
+- Apprentice pushes without touching the flagged line → ignored
+
+These require **GitHub App webhooks** on `lars-blacksmith-exp`, routed to a Blacksmith-hosted webhook receiver in the main project. The reviewer GitHub Action sees none of this — it only handles the initial post. Subscribed events would be `pull_request_review_comment`, `issue_comment`, `pull_request_review`, `pull_request`, `push`. Webhook receiver is part of the next slice of work in the main project; this repo's role ends at the structured emit on review-post.
 
 ---
 

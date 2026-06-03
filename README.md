@@ -44,6 +44,7 @@ jobs:
       - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
         with:
           app-private-key: ${{ secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY }}
+          project-id: ${{ secrets.BLACKSMITH_PROJECT_ID }}
           model: openai/gpt-4o-mini
           min-severity: low
 ```
@@ -65,6 +66,8 @@ What each piece does:
 | `app-id`          | `3948048`             | App ID for `lars-blacksmith-exp`. Hardcoded — not a secret. Don't change this.                 |
 | `github-token`    | `${{ github.token }}` | Fallback token used only if `app-private-key` is empty. Posts as `github-actions[bot]`.        |
 | `min-severity`    | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.                               |
+| `project-id`      | _(none)_              | UUID of your Blacksmith Experience project. Provisioned for you as a repo secret. Links Lars's reviews back to your apprenticeship state. |
+| `tracking-url`    | _(none)_              | Base URL of the Experience tracking endpoint. Set by the Experience platform.                  |
 
 If your reviews suddenly stop appearing, the first thing to check is whether this file still exists in your repo — accidental deletions happen, and without it nothing runs.
 

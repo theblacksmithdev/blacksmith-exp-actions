@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,12 +18,21 @@ class ReviewerConfig(BaseSettings):
     repo: str
     model: str = "openai/gpt-4o-mini"
     min_severity: Severity = Severity.LOW
+    project_id: UUID | None = None
+    tracking_url: str = ""
 
     @model_validator(mode="after")
     def _default_inference_token(self) -> ReviewerConfig:
         if not self.inference_token:
             object.__setattr__(self, "inference_token", self.github_token)
         return self
+
+    @field_validator("project_id", mode="before")
+    @classmethod
+    def _coerce_project_id(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("min_severity", mode="before")
     @classmethod

@@ -44,6 +44,22 @@ inputs:
     description: "Lowest severity to post: low | medium | high | critical."
     required: false
     default: "low"
+  project-id:
+    description: >-
+      UUID of the Blacksmith Experience project this repo is linked to.
+      Apprentice repos pass secrets.BLACKSMITH_PROJECT_ID here. Used to
+      attribute review events to the right apprentice when emitting to
+      the Experience backend. Leave empty for repos outside the Experience.
+    required: false
+    default: ""
+  tracking-url:
+    description: >-
+      Base URL of the Blacksmith Experience tracking endpoint. The action
+      POSTs review-posted events to {tracking-url}/review-posted after
+      each review. Leave empty to disable tracking.
+    required: false
+    # TODO(blacksmith-experience): set a default once the endpoint is live.
+    default: ""
 
 runs:
   using: "composite"
@@ -74,4 +90,6 @@ runs:
         EVENT_NAME: ${{ github.event_name }}
         MODEL: ${{ inputs.model }}
         MIN_SEVERITY: ${{ inputs.min-severity }}
+        PROJECT_ID: ${{ inputs.project-id }}
+        TRACKING_URL: ${{ inputs.tracking-url }}
       run: python -m blacksmith reviewer
