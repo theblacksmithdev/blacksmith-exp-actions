@@ -39,15 +39,9 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-reviewer'))
     runs-on: ubuntu-latest
     steps:
-      - name: Mint blacksmith-reviewer app token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.BLACKSMITH_REVIEWER_APP_ID }}
-          private-key: ${{ secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY }}
       - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
         with:
-          github-token: ${{ steps.app-token.outputs.token }}
+          app-private-key: ${{ secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY }}
           model: openai/gpt-4o-mini
           min-severity: low
 ```
@@ -55,17 +49,19 @@ jobs:
 What each piece does:
 - **`on: pull_request`** — runs when you open a PR or push more commits to it.
 - **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@blacksmith-reviewer` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
-- **`Mint blacksmith-reviewer app token`** — exchanges the GitHub App credentials (provisioned as repo secrets by the Experience) for a short-lived installation token. The token carries the App's own permissions, so no `permissions:` block on the job is needed. This is what makes reviews appear under `blacksmith-reviewer[bot]` rather than `github-actions[bot]`.
 - **`uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically. The `/reviewer` segment selects the reviewer action from the monorepo; future actions live at sibling paths (e.g. `/triager`, `/standup`).
-- **`with:` inputs** — see the table below. `github-token` is passed explicitly here so the action posts as the app, not as the default workflow actor.
+- **`app-private-key`** — the only secret apprentices need. The action uses it to mint a short-lived installation token at job start and posts the review under the `blacksmith-reviewer[bot]` identity. The App ID is hardcoded in the action's default — it's not a secret.
+- **`with:` inputs** — see the table below.
 
 #### Inputs you can tune
 
-| Input          | Default               | What it does                                                              |
-|----------------|-----------------------|---------------------------------------------------------------------------|
-| `model`        | `openai/gpt-4o-mini`  | Which GitHub Models LLM the senior team uses. Any catalog id works.       |
-| `github-token` | `${{ github.token }}` | Token used to call inference and post the review. The installed workflow passes a `blacksmith-reviewer` app installation token so reviews appear under the app's identity. Don't change this. |
-| `min-severity` | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.          |
+| Input             | Default               | What it does                                                                                   |
+|-------------------|-----------------------|------------------------------------------------------------------------------------------------|
+| `model`           | `openai/gpt-4o-mini`  | Which GitHub Models LLM the senior team uses. Any catalog id works.                            |
+| `app-private-key` | _(none)_              | Private key for the `blacksmith-reviewer` GitHub App. Provisioned for you as a repo secret.    |
+| `app-id`          | `3948048`             | App ID for `blacksmith-reviewer`. Hardcoded — not a secret. Don't change this.                 |
+| `github-token`    | `${{ github.token }}` | Fallback token used only if `app-private-key` is empty. Posts as `github-actions[bot]`.        |
+| `min-severity`    | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.                               |
 
 If your reviews suddenly stop appearing, the first thing to check is whether this file still exists in your repo — accidental deletions happen, and without it nothing runs.
 

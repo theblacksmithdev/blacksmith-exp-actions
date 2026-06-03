@@ -191,11 +191,11 @@ This calls real GitHub Models and posts a real review. Use against a throwaway P
 
 ## GitHub App: `blacksmith-reviewer`
 
-The reviewer's PR comments appear under the `blacksmith-reviewer[bot]` identity. That identity is a **GitHub App** owned by Blacksmith and installed on each apprentice repo. The apprentice workflow mints a short-lived installation token at job start (`actions/create-github-app-token`) and passes it to the action as `github-token`.
+The reviewer's PR comments appear under the `blacksmith-reviewer[bot]` identity. That identity is a **GitHub App** owned by Blacksmith and installed on each apprentice repo. The `reviewer` action itself mints the installation token from the App's credentials at job start, so the apprentice workflow only has to pass one input: `app-private-key`.
 
 ### App registration (one-time, per Blacksmith)
 
-Register the App under the Blacksmith GitHub org with:
+App ID `3948048`, registered under the `theblacksmithdev` org with:
 
 - **Name**: `blacksmith-reviewer` (the `[bot]` slug users see)
 - **Description / avatar**: whatever we want apprentices to see — this is the on-PR face of the senior team.
@@ -206,19 +206,21 @@ Register the App under the Blacksmith GitHub org with:
   - `Metadata: read` (implicit).
 - **Account permissions**:
   - `Models: read` — needed so the same token can call the GitHub Models inference endpoint.
-- **Where can this App be installed**: Only on accounts owned by the Blacksmith org (or whichever org the Experience writes workflows into).
+- **Where can this App be installed**: `Any account` (apprentice orgs install it on their own repos).
 
-Per-persona apps (Senior Frontend, Senior Backend, …) ship as separate registrations under the same naming convention (`blacksmith-frontend-senior`, etc.) — one App per identity is what gives each one a distinct face on PRs.
+The App ID is hardcoded as the default of the `app-id` input in `reviewer/action.yml`. App IDs are not secrets — they're shown on the App's public page. Only the private key needs distribution.
+
+Per-persona apps (Senior Frontend, Senior Backend, …) ship as separate registrations under the same naming convention (`blacksmith-frontend-senior`, etc.) — one App per identity is what gives each one a distinct face on PRs. Each persona action overrides the `app-id` default.
 
 ### Credential distribution — **open decision**
 
-The workflow needs two secrets at job start: the App ID and the App's private key. Two options, blast-radius vs. simplicity:
+The workflow needs the App's private key at job start. Three options, blast-radius vs. operational cost:
 
-1. **Per-apprentice-org App install + repo secrets.** Experience installs the App on the apprentice's org, then writes `BLACKSMITH_REVIEWER_APP_ID` and `BLACKSMITH_REVIEWER_PRIVATE_KEY` as secrets into each apprentice repo. Simple, but the private key is now extractable by anyone with admin on any apprentice repo — and a leaked key impersonates the App on **every** repo it's installed on. Not acceptable past the prototype stage.
-2. **Per-org App registration.** Each apprentice's org gets its own App registration (still named `blacksmith-reviewer`, but a different App ID + key). A leaked key only impersonates the App on that org's repos. Correct blast radius, but provisioning cost: the Experience platform has to register a new App via the GitHub API every time a new apprentice org joins.
-3. **Centralized token broker.** Workflow calls a Blacksmith-hosted endpoint (OIDC-authenticated from the runner) that returns an installation token. Private key never leaves Blacksmith infrastructure. Cleanest, most operational work.
+1. **Per-repo secrets, automated by the Experience.** Experience's OAuth App (`Blacksmith Experience`) already holds `repo` scope on the apprentice's behalf. At provisioning time it writes `BLACKSMITH_REVIEWER_PRIVATE_KEY` into the apprentice's repo secrets via `PUT /repos/{owner}/{repo}/actions/secrets/{name}` (libsodium-encrypted). Apprentice never touches secrets manually. **Caveat**: an apprentice with repo admin can extract the key via their own malicious workflow (`run: echo "${{ secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY }}" | base64`) and impersonate the bot on every other apprentice repo. Acceptable for vetted-cohort phase, not for general release.
+2. **Per-org App registration.** Each apprentice org gets its own App (different App ID + key, same name/avatar). A leaked key only impersonates within that one org. Correct blast radius. Provisioning cost: Experience must register an App on each new apprentice org via the GitHub API.
+3. **Centralized token broker.** Workflow uses GitHub OIDC (`id-token: write`, free, no setup) to prove "I'm running in workflow X of repo Y at commit Z." Sends OIDC token to a Blacksmith-hosted endpoint that validates the claim, confirms the App is installed on repo Y, mints a scoped installation token using the private key it holds, returns it. Private key never leaves Blacksmith infrastructure. Apprentice repos hold zero secrets. Real infra to deploy and operate (~100 LOC service + uptime monitoring).
 
-The current README workflow assumes option 1 (`secrets.BLACKSMITH_REVIEWER_APP_ID` / `secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY`). Before this ships to real apprentices, pick 2 or 3 — option 1 is fine for development against throwaway repos only.
+The current README workflow assumes option 1. Before this ships to real apprentices outside vetted cohorts, pick 2 or 3.
 
 ---
 

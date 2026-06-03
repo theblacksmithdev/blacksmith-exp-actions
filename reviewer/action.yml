@@ -11,12 +11,24 @@ inputs:
     description: "GitHub Models catalog id (e.g. openai/gpt-4o-mini)."
     required: false
     default: "openai/gpt-4o-mini"
+  app-id:
+    description: >-
+      GitHub App ID to authenticate as. Defaults to the public blacksmith-reviewer
+      app so reviews appear under that identity. App IDs are not secrets.
+    required: false
+    default: "3948048"
+  app-private-key:
+    description: >-
+      PEM-formatted private key for the GitHub App named in app-id. When set, the
+      action mints a short-lived installation token and uses it instead of
+      github-token. Apprentice repos pass secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY here.
+    required: false
+    default: ""
   github-token:
     description: >-
-      Token used for GitHub Models inference and posting the review. Pass a
-      GitHub App installation token (e.g. from actions/create-github-app-token)
-      to have reviews appear under the app's identity instead of github-actions[bot].
-      The app must hold contents:read, pull-requests:write, and models:read.
+      Fallback token used only when app-private-key is empty. Defaults to the
+      workflow's GITHUB_TOKEN, which posts as github-actions[bot] — useful for
+      local development but not for production review.
     required: false
     default: ${{ github.token }}
   min-severity:
@@ -27,6 +39,14 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Mint app installation token
+      id: app-token
+      if: inputs.app-private-key != ''
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -39,7 +59,7 @@ runs:
     - name: Run reviewer
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ steps.app-token.outputs.token || inputs.github-token }}
         REPO: ${{ github.repository }}
         EVENT_NAME: ${{ github.event_name }}
         MODEL: ${{ inputs.model }}
