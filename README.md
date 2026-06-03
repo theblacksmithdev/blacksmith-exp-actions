@@ -34,6 +34,8 @@ on:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
+permissions:
+  models: read
 jobs:
   review:
     if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-reviewer'))
@@ -49,6 +51,7 @@ jobs:
 What each piece does:
 - **`on: pull_request`** — runs when you open a PR or push more commits to it.
 - **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@blacksmith-reviewer` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
+- **`permissions: models: read`** — needed on the workflow's `GITHUB_TOKEN` so the action can call GitHub Models for inference. The App's installation token is used to post the review under the bot identity, but inference uses the workflow token because App installation tokens don't carry the `models` permission.
 - **`uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically. The `/reviewer` segment selects the reviewer action from the monorepo; future actions live at sibling paths (e.g. `/triager`, `/standup`).
 - **`app-private-key`** — the only secret apprentices need. The action uses it to mint a short-lived installation token at job start and posts the review under the `blacksmith-reviewer[bot]` identity. The App ID is hardcoded in the action's default — it's not a secret.
 - **`with:` inputs** — see the table below.

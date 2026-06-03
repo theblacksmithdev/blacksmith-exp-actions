@@ -42,7 +42,7 @@ class ReviewerAction(Action):
         return cls(
             config=config,
             github_client=GitHubClient(config.github_token),
-            inference_client=GitHubModelsClient(config.github_token),
+            inference_client=GitHubModelsClient(config.inference_token),
             event=EventContext.from_env(),
         )
 

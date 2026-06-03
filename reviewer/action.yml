@@ -31,6 +31,15 @@ inputs:
       local development but not for production review.
     required: false
     default: ${{ github.token }}
+  inference-token:
+    description: >-
+      Token used to call the GitHub Models inference endpoint. Defaults to the
+      workflow's GITHUB_TOKEN because installation tokens minted from a GitHub
+      App do not (yet) carry models:read — only user-to-server tokens and
+      workflow tokens do. Keep this default unless you have a specific reason
+      to override it.
+    required: false
+    default: ${{ github.token }}
   min-severity:
     description: "Lowest severity to post: low | medium | high | critical."
     required: false
@@ -60,6 +69,7 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ steps.app-token.outputs.token || inputs.github-token }}
+        INFERENCE_TOKEN: ${{ inputs.inference-token }}
         REPO: ${{ github.repository }}
         EVENT_NAME: ${{ github.event_name }}
         MODEL: ${{ inputs.model }}
