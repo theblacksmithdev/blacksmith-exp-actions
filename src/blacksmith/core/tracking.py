@@ -15,7 +15,6 @@ class ReviewPostedEvent(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     project_id: UUID
-    repo: str
     pr_number: int
     commit_sha: str
     model: str

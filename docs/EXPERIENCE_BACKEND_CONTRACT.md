@@ -33,7 +33,6 @@ Content-Type: application/json
 
 {
   "project_id": "550e8400-e29b-41d4-a716-446655440000",
-  "repo": "oluwatobimaxwell/rkbstudentaccommodation",
   "pr_number": 3,
   "commit_sha": "2ff8a5cce9e19bcffe9de3a40b653c7500a62f28",
   "model": "openai/gpt-4o-mini",
@@ -46,7 +45,7 @@ Content-Type: application/json
 }
 ```
 
-Schema is the JSON serialization of `blacksmith.core.tracking.ReviewPostedEvent` — use that as the canonical reference. `mention_triggered` is currently always `false` in v1.5+ (mentions go through `_respond`, not `_review`) but kept on the payload for forward compat.
+Schema is the JSON serialization of `blacksmith.core.tracking.ReviewPostedEvent` — use that as the canonical reference. `repo` is deliberately absent: the backend already knows the repo from the project linkage, and `project_id` is the routing identity. `mention_triggered` is currently always `false` in v1.5+ (mentions go through `_respond`, not `_review`) but kept on the payload for forward compat.
 
 ### Response
 
@@ -56,7 +55,7 @@ Schema is the JSON serialization of `blacksmith.core.tracking.ReviewPostedEvent`
 
 ### What the Experience should do with this
 
-At minimum: persist as a row keyed on `(project_id, repo, pr_number, commit_sha)`. This is the first leg of how the EM-side picture of "what work the apprentice is shipping" gets built.
+At minimum: persist as a row keyed on `(project_id, pr_number, commit_sha)`. This is the first leg of how the EM-side picture of "what work the apprentice is shipping" gets built.
 
 ---
 
@@ -66,7 +65,9 @@ The action's `Project` class is shaped for these endpoints but every method is a
 
 The conversation today reconstructs from GitHub's PR thread on each run, which is fine for in-thread replies but loses any context the apprentice and Lars built up over time (prior PRs, recurring topics). These endpoints are how that context lives outside one PR.
 
-### 2.1 `GET /projects/{project_id}/prs/{repo}/{pr_number}/session`
+All conversation endpoints are scoped by `(project_id, pr_number)`. PR numbers are unique within the project's linked repo, so they're enough to identify the thread.
+
+### 2.1 `GET /projects/{project_id}/prs/{pr_number}/session`
 
 Returns a persistent session identifier for the LLM provider. When we move from stateless `chat.completions` to OpenAI Assistants (or any provider with a server-side thread), this is where the thread id lives.
 
@@ -78,7 +79,7 @@ Returns a persistent session identifier for the LLM provider. When we move from 
 (when no session has been created for this PR yet — action will create one)
 ```
 
-### 2.2 `PUT /projects/{project_id}/prs/{repo}/{pr_number}/session`
+### 2.2 `PUT /projects/{project_id}/prs/{pr_number}/session`
 
 ```http
 PUT ...
@@ -87,7 +88,7 @@ PUT ...
 204 No Content
 ```
 
-### 2.3 `GET /projects/{project_id}/prs/{repo}/{pr_number}/history`
+### 2.3 `GET /projects/{project_id}/prs/{pr_number}/history`
 
 Returns prior LLM message history for this PR, in OpenAI chat-completion shape. Used to seed Lars with context older than the GitHub thread can express (e.g. our own summaries, intent, what we said in a closed PR before).
 
@@ -103,7 +104,7 @@ Returns prior LLM message history for this PR, in OpenAI chat-completion shape. 
 
 Empty array is a legitimate response — first encounter on this PR.
 
-### 2.4 `POST /projects/{project_id}/prs/{repo}/{pr_number}/history`
+### 2.4 `POST /projects/{project_id}/prs/{pr_number}/history`
 
 Append the latest turn(s) to the history. Idempotency is nice-to-have but not required (the action will dedupe on its side if you don't).
 
@@ -152,7 +153,7 @@ Roughly the signal taxonomy from `CONTRIBUTING.md`'s engagement-tracking section
 - **Pushed a commit that touches the flagged line** → addressed (silently). Requires looking at the patch against the original finding's `file:line`.
 - **Pushed a commit that does not touch the flagged line** → ignored.
 
-The classification logic can start crude and tighten over time. The webhook receiver's first job is just storing the raw events keyed on `(project_id, repo, pr_number)`. Aggregation/classification can be a separate cron or on-demand query.
+The webhook receiver gets `repository.full_name` from each webhook payload — that's where it derives `project_id` from (look the repo up in your project table). The classification logic can start crude and tighten over time. The receiver's first job is just storing the raw events keyed on `(project_id, pr_number)`. Aggregation/classification can be a separate cron or on-demand query.
 
 ---
 
@@ -189,10 +190,12 @@ I'd lean #3 long-term, #1 for first ship if the apprentice cohort is small and v
 
 Rough sketch — design as you see fit:
 
-- `ProjectReview` row: `(project_id, repo, pr_number, commit_sha, posted_at, findings_total, findings_by_severity)`. Append-only.
-- `ConversationSession` row: `(project_id, repo, pr_number, session_id, provider)`. One per PR.
-- `ConversationMessage` row: `(project_id, repo, pr_number, role, content, created_at, source)`. `source` distinguishes "from the action" vs "reconstructed from GitHub webhook".
-- `EngagementSignal` row: `(project_id, repo, pr_number, kind, payload_json, received_at)`. Raw webhook events, classified later.
+Project ↔ repo is one-to-one and lives on the `Project` table you already have, so `repo` does not need to appear on every event row.
+
+- `ProjectReview` row: `(project_id, pr_number, commit_sha, posted_at, findings_total, findings_by_severity)`. Append-only.
+- `ConversationSession` row: `(project_id, pr_number, session_id, provider)`. One per PR.
+- `ConversationMessage` row: `(project_id, pr_number, role, content, created_at, source)`. `source` distinguishes "from the action" vs "reconstructed from GitHub webhook".
+- `EngagementSignal` row: `(project_id, pr_number, kind, payload_json, received_at)`. Raw webhook events, classified later.
 
 ---
 

@@ -156,7 +156,6 @@ class ReviewerAction(Action):
         self._tracking.review_posted(
             ReviewPostedEvent(
                 project_id=self._config.project_id,
-                repo=self._config.repo,
                 pr_number=pr_number,
                 commit_sha=commit_sha,
                 model=self._config.model,

@@ -16,13 +16,13 @@ class TestProject:
         """While the main project's endpoint is unbuilt, the placeholder
         returns empty so the responder falls back to GitHub thread context."""
         project = Project(uuid4())
-        assert project.get_conversation_history("o/r", 1) == []
-        assert project.get_session_id("o/r", 1) is None
+        assert project.get_conversation_history(1) == []
+        assert project.get_session_id(1) is None
 
     def test_writes_are_no_ops_today(self) -> None:
         # No exception, no return value to assert. The point is that
         # callers can invoke these without conditional branches even when
         # the backend is not wired yet.
         project = Project(uuid4())
-        project.save_session_id("o/r", 1, "sess-abc")
-        project.append_to_history("o/r", 1, [])
+        project.save_session_id(1, "sess-abc")
+        project.append_to_history(1, [])

@@ -37,22 +37,22 @@ class Project:
     def is_attached(self) -> bool:
         return self._project_id is not None
 
-    def get_session_id(self, repo: str, pr_number: int) -> str | None:
-        # TODO(blacksmith-experience): GET /projects/{id}/prs/{repo}/{pr}/session
-        del repo, pr_number
+    def get_session_id(self, pr_number: int) -> str | None:
+        # TODO(blacksmith-experience): GET /projects/{id}/prs/{pr}/session
+        del pr_number
         return None
 
-    def save_session_id(self, repo: str, pr_number: int, session_id: str) -> None:
-        # TODO(blacksmith-experience): PUT /projects/{id}/prs/{repo}/{pr}/session
-        del repo, pr_number, session_id
+    def save_session_id(self, pr_number: int, session_id: str) -> None:
+        # TODO(blacksmith-experience): PUT /projects/{id}/prs/{pr}/session
+        del pr_number, session_id
 
-    def get_conversation_history(self, repo: str, pr_number: int) -> list[Message]:
-        # TODO(blacksmith-experience): GET /projects/{id}/prs/{repo}/{pr}/history
+    def get_conversation_history(self, pr_number: int) -> list[Message]:
+        # TODO(blacksmith-experience): GET /projects/{id}/prs/{pr}/history
         # Until this is wired, the live PR thread on GitHub is the only
         # context source — see ConversationBuilder.
-        del repo, pr_number
+        del pr_number
         return []
 
-    def append_to_history(self, repo: str, pr_number: int, messages: list[Message]) -> None:
-        # TODO(blacksmith-experience): POST /projects/{id}/prs/{repo}/{pr}/history
-        del repo, pr_number, messages
+    def append_to_history(self, pr_number: int, messages: list[Message]) -> None:
+        # TODO(blacksmith-experience): POST /projects/{id}/prs/{pr}/history
+        del pr_number, messages

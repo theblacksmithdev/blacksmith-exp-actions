@@ -17,7 +17,6 @@ class TestTrackingClient:
         client = TrackingClient(None)
         event = ReviewPostedEvent(
             project_id=uuid4(),
-            repo="o/r",
             pr_number=1,
             commit_sha="abc",
             model="m",
@@ -30,7 +29,6 @@ class TestReviewPostedEvent:
     def test_severity_counts_default_empty(self) -> None:
         event = ReviewPostedEvent(
             project_id=uuid4(),
-            repo="o/r",
             pr_number=1,
             commit_sha="abc",
             model="m",
@@ -43,7 +41,6 @@ class TestReviewPostedEvent:
         project_id = uuid4()
         event = ReviewPostedEvent(
             project_id=project_id,
-            repo="o/r",
             pr_number=1,
             commit_sha="abc",
             model="m",
@@ -53,3 +50,16 @@ class TestReviewPostedEvent:
         payload = event.model_dump(mode="json")
         assert payload["project_id"] == str(project_id)
         assert payload["findings_by_severity"] == {"high": 1, "low": 1}
+
+    def test_payload_does_not_include_repo(self) -> None:
+        """The project_id is enough — the backend looks repo up from the
+        project linkage. Keeping repo on the wire would create the risk
+        of an inconsistency (action sends one, backend has another)."""
+        event = ReviewPostedEvent(
+            project_id=uuid4(),
+            pr_number=1,
+            commit_sha="abc",
+            model="m",
+            findings_total=0,
+        )
+        assert "repo" not in event.model_dump(mode="json")
