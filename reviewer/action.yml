@@ -13,7 +13,7 @@ inputs:
     default: "openai/gpt-4o-mini"
   app-id:
     description: >-
-      GitHub App ID to authenticate as. Defaults to the public blacksmith-reviewer
+      GitHub App ID to authenticate as. Defaults to the public lars-blacksmith-exp
       app so reviews appear under that identity. App IDs are not secrets.
     required: false
     default: "3948048"

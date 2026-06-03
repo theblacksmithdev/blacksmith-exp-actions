@@ -189,16 +189,19 @@ This calls real GitHub Models and posts a real review. Use against a throwaway P
 
 ---
 
-## GitHub App: `blacksmith-reviewer`
+## GitHub App: `lars-blacksmith-exp` (Lars, Staff Engineer)
 
-The reviewer's PR comments appear under the `blacksmith-reviewer[bot]` identity. That identity is a **GitHub App** owned by Blacksmith and installed on each apprentice repo. The `reviewer` action itself mints the installation token from the App's credentials at job start, so the apprentice workflow only has to pass one input: `app-private-key`.
+The reviewer's PR comments appear under the `lars-blacksmith-exp[bot]` identity — **Lars**, the Staff Engineer on the apprentice's fictional team. That identity is a **GitHub App** owned by Blacksmith and installed on each apprentice repo. The `reviewer` action itself mints the installation token from the App's credentials at job start, so the apprentice workflow only has to pass one input: `app-private-key`.
+
+Lars is the cross-cutting reviewer — he covers all PR types until per-domain personas (Ravi for frontend, Tunde for backend, Rosa for database) ship as separate apps with their own slugs (e.g. `ravi-blacksmith-exp`, etc.). Each persona action overrides the `app-id` default in `reviewer/action.yml`.
 
 ### App registration (one-time, per Blacksmith)
 
 App ID `3948048`, registered under the `theblacksmithdev` org with:
 
-- **Name**: `blacksmith-reviewer` (the `[bot]` slug users see)
-- **Description / avatar**: whatever we want apprentices to see — this is the on-PR face of the senior team.
+- **URL slug**: `lars-blacksmith-exp` (the `[bot]` handle users see on PRs)
+- **Display name**: "Lars · Staff Engineer" (or similar — free text)
+- **Avatar**: Lars's headshot from the team page
 - **Webhook**: disabled. The workflow is triggered by GitHub-native events, not by App webhooks.
 - **Repository permissions**:
   - `Contents: read` — needed to fetch `.blacksmith/REVIEW.md` raw at the PR head.

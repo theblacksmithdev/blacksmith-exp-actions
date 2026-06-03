@@ -8,7 +8,7 @@ You're not reviewing alone. The senior engineers on your team look at every PR y
 
 ## What you'll see on a PR
 
-Within ~30 seconds of opening or pushing to a PR, a review appears from `blacksmith-reviewer[bot]` — the senior team's GitHub identity. (Per-persona identities — Senior Frontend, Senior Backend, Staff, … — are on the roadmap; today there's one shared reviewer.) It has two parts:
+Within ~30 seconds of opening or pushing to a PR, a review appears from **Lars** (`lars-blacksmith-exp[bot]`) — your team's Staff Engineer. (Per-persona reviewers for each Senior — Frontend, Backend, Database — are on the roadmap; today Lars covers all of it.) It has two parts:
 
 1. **Inline comments** anchored to specific lines you added or changed. Each comment names a severity (`critical` / `high` / `medium` / `low`), a short title, and a concrete failing scenario plus the fix.
 2. **A summary** at the top with the total count, a breakdown by severity, and any findings the reviewer couldn't anchor to a specific line.
@@ -38,7 +38,7 @@ permissions:
   models: read
 jobs:
   review:
-    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-reviewer'))
+    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@lars-blacksmith-exp'))
     runs-on: ubuntu-latest
     steps:
       - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
@@ -50,10 +50,10 @@ jobs:
 
 What each piece does:
 - **`on: pull_request`** — runs when you open a PR or push more commits to it.
-- **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@blacksmith-reviewer` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
+- **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@lars-blacksmith-exp` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
 - **`permissions: models: read`** — needed on the workflow's `GITHUB_TOKEN` so the action can call GitHub Models for inference. The App's installation token is used to post the review under the bot identity, but inference uses the workflow token because App installation tokens don't carry the `models` permission.
 - **`uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically. The `/reviewer` segment selects the reviewer action from the monorepo; future actions live at sibling paths (e.g. `/triager`, `/standup`).
-- **`app-private-key`** — the only secret apprentices need. The action uses it to mint a short-lived installation token at job start and posts the review under the `blacksmith-reviewer[bot]` identity. The App ID is hardcoded in the action's default — it's not a secret.
+- **`app-private-key`** — the only secret apprentices need. The action uses it to mint a short-lived installation token at job start and posts the review under Lars's identity (`lars-blacksmith-exp[bot]`). The App ID is hardcoded in the action's default — it's not a secret.
 - **`with:` inputs** — see the table below.
 
 #### Inputs you can tune
@@ -61,8 +61,8 @@ What each piece does:
 | Input             | Default               | What it does                                                                                   |
 |-------------------|-----------------------|------------------------------------------------------------------------------------------------|
 | `model`           | `openai/gpt-4o-mini`  | Which GitHub Models LLM the senior team uses. Any catalog id works.                            |
-| `app-private-key` | _(none)_              | Private key for the `blacksmith-reviewer` GitHub App. Provisioned for you as a repo secret.    |
-| `app-id`          | `3948048`             | App ID for `blacksmith-reviewer`. Hardcoded — not a secret. Don't change this.                 |
+| `app-private-key` | _(none)_              | Private key for the `lars-blacksmith-exp` GitHub App. Provisioned for you as a repo secret.    |
+| `app-id`          | `3948048`             | App ID for `lars-blacksmith-exp`. Hardcoded — not a secret. Don't change this.                 |
 | `github-token`    | `${{ github.token }}` | Fallback token used only if `app-private-key` is empty. Posts as `github-actions[bot]`.        |
 | `min-severity`    | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.                               |
 
@@ -71,12 +71,12 @@ If your reviews suddenly stop appearing, the first thing to check is whether thi
 ### Day-to-day: automatic
 Just work the way you normally would. Every time you open a PR or push commits to one, a review is triggered. No action on your part.
 
-### On demand: `@blacksmith-reviewer`
+### On demand: `@lars-blacksmith-exp`
 
-Want the team to look again — maybe after a refactor, or because the first review felt off? Drop a comment anywhere in the PR thread mentioning **`@blacksmith-reviewer`**:
+Want Lars to look again — maybe after a refactor, or because the first review felt off? Drop a comment anywhere in the PR thread mentioning **`@lars-blacksmith-exp`**:
 
 ```
-@blacksmith-reviewer can you take another look — I restructured the auth flow.
+@lars-blacksmith-exp can you take another look — I restructured the auth flow.
 ```
 
 A fresh review will appear within a few seconds.
@@ -156,7 +156,7 @@ If you think a review is *systematically* off — not one finding, but a pattern
 
 These are gaps the Experience knows about and is closing:
 
-- Reviews post under a single shared `blacksmith-reviewer[bot]` identity. Per-persona identities (Senior Frontend, Senior Backend, Senior Database, Staff, …) — each as their own named GitHub app — are being built; soon each review will come from a teammate with a distinct face and name.
+- Today every review is from **Lars**, regardless of whether the PR is frontend, backend, or database work. Per-domain reviewers — Ravi (Senior Frontend), Tunde (Senior Backend), Rosa (Senior Database) — each as their own GitHub app, are being built; soon a frontend PR will come from Ravi, a database migration from Rosa, and so on.
 - On PRs from **forks**, GitHub doesn't grant the workflow the secrets needed to mint the app token, so the review will fail to post. The Experience normally won't have you working from forks; if you hit this, mention it in your standup.
 - **One review pass per PR.** No multi-pass voting, no self-fix suggestions. The hosted Blacksmith reviewer (separate, post-graduation product) does more.
 

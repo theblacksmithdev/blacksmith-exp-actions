@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   review:
-    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-reviewer'))
+    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@lars-blacksmith-exp'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
