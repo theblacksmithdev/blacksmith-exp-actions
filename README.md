@@ -23,14 +23,54 @@ The reviewer **never auto-approves**. Approval is a teammate's judgment call, no
 
 ## How to use it
 
-### Automatically
-Just work the way you normally would. Every time you:
-- open a PR, or
-- push new commits to an existing PR,
+### The workflow file
 
-a review is triggered.
+The Experience installs a workflow at **`.github/workflows/blacksmith-review.yml`** in your project repo. You shouldn't normally need to touch it — but here's what's running on your PRs:
 
-### On demand
+```yaml
+name: Blacksmith — Code Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  pull-requests: write
+  models: read
+jobs:
+  review:
+    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-dev'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: blacksmith-dev/reviewer@v1
+        with:
+          model: openai/gpt-4o-mini
+          min-severity: low
+```
+
+What each piece does:
+- **`on: pull_request`** — runs when you open a PR or push more commits to it.
+- **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@blacksmith-dev` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
+- **`permissions`** — `pull-requests: write` lets the action post the review; `models: read` lets it call GitHub Models for inference.
+- **`uses: blacksmith-dev/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically.
+- **`with:` inputs** — see the table below.
+
+#### Inputs you can tune
+
+| Input          | Default               | What it does                                                              |
+|----------------|-----------------------|---------------------------------------------------------------------------|
+| `model`        | `openai/gpt-4o-mini`  | Which GitHub Models LLM the senior team uses. Any catalog id works.       |
+| `github-token` | `${{ github.token }}` | The token used to call inference and post the review. Don't change this.  |
+| `min-severity` | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.          |
+
+If your reviews suddenly stop appearing, the first thing to check is whether this file still exists in your repo — accidental deletions happen, and without it nothing runs.
+
+### Day-to-day: automatic
+Just work the way you normally would. Every time you open a PR or push commits to one, a review is triggered. No action on your part.
+
+### On demand: `@blacksmith-dev`
+
 Want the team to look again — maybe after a refactor, or because the first review felt off? Drop a comment anywhere in the PR thread mentioning **`@blacksmith-dev`**:
 
 ```
@@ -39,7 +79,8 @@ Want the team to look again — maybe after a refactor, or because the first rev
 
 A fresh review will appear within a few seconds.
 
-### With project-specific guidance
+### With project-specific guidance: `.blacksmith/REVIEW.md`
+
 If your project has rules a generic reviewer wouldn't know — naming conventions, architectural constraints, "we always do X here" — write them into **`.blacksmith/REVIEW.md`** in your repo. The reviewer reads that file at the PR's head commit and obeys it. Treat it as a way to teach the team about your project's idioms.
 
 Example `.blacksmith/REVIEW.md`:
@@ -47,7 +88,30 @@ Example `.blacksmith/REVIEW.md`:
 - All API handlers must validate input with our `validators.py` module.
 - New database queries must go through `db.session.scope()`, not raw `db.execute()`.
 - Anything under `internal/` is not part of the public API; flag any export from there.
+- Migrations are forward-only — never edit a migration that's already been merged.
 ```
+
+### Tuning the workflow
+
+If you want a stricter floor (only `high` and above, say) you can edit your workflow file:
+
+```yaml
+      - uses: blacksmith-dev/reviewer@v1
+        with:
+          model: openai/gpt-4o-mini
+          min-severity: high
+```
+
+Or switch the model:
+
+```yaml
+      - uses: blacksmith-dev/reviewer@v1
+        with:
+          model: openai/gpt-4o
+          min-severity: low
+```
+
+Check with your EM before bumping `min-severity` — they may want all findings visible for level-review evidence even if a few are nits.
 
 ---
 
