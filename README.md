@@ -8,7 +8,7 @@ You're not reviewing alone. The senior engineers on your team look at every PR y
 
 ## What you'll see on a PR
 
-Within ~30 seconds of opening or pushing to a PR, a review appears from `github-actions[bot]` (the persona layer that gives each senior a distinct GitHub identity is on the roadmap). It has two parts:
+Within ~30 seconds of opening or pushing to a PR, a review appears from `blacksmith-reviewer[bot]` — the senior team's GitHub identity. (Per-persona identities — Senior Frontend, Senior Backend, Staff, … — are on the roadmap; today there's one shared reviewer.) It has two parts:
 
 1. **Inline comments** anchored to specific lines you added or changed. Each comment names a severity (`critical` / `high` / `medium` / `low`), a short title, and a concrete failing scenario plus the fix.
 2. **A summary** at the top with the total count, a breakdown by severity, and any findings the reviewer couldn't anchor to a specific line.
@@ -34,34 +34,37 @@ on:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
-permissions:
-  contents: read
-  pull-requests: write
-  models: read
 jobs:
   review:
-    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-dev'))
+    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-reviewer'))
     runs-on: ubuntu-latest
     steps:
+      - name: Mint blacksmith-reviewer app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BLACKSMITH_REVIEWER_APP_ID }}
+          private-key: ${{ secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY }}
       - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           model: openai/gpt-4o-mini
           min-severity: low
 ```
 
 What each piece does:
 - **`on: pull_request`** — runs when you open a PR or push more commits to it.
-- **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@blacksmith-dev` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
-- **`permissions`** — `pull-requests: write` lets the action post the review; `models: read` lets it call GitHub Models for inference.
+- **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@blacksmith-reviewer` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
+- **`Mint blacksmith-reviewer app token`** — exchanges the GitHub App credentials (provisioned as repo secrets by the Experience) for a short-lived installation token. The token carries the App's own permissions, so no `permissions:` block on the job is needed. This is what makes reviews appear under `blacksmith-reviewer[bot]` rather than `github-actions[bot]`.
 - **`uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically. The `/reviewer` segment selects the reviewer action from the monorepo; future actions live at sibling paths (e.g. `/triager`, `/standup`).
-- **`with:` inputs** — see the table below.
+- **`with:` inputs** — see the table below. `github-token` is passed explicitly here so the action posts as the app, not as the default workflow actor.
 
 #### Inputs you can tune
 
 | Input          | Default               | What it does                                                              |
 |----------------|-----------------------|---------------------------------------------------------------------------|
 | `model`        | `openai/gpt-4o-mini`  | Which GitHub Models LLM the senior team uses. Any catalog id works.       |
-| `github-token` | `${{ github.token }}` | The token used to call inference and post the review. Don't change this.  |
+| `github-token` | `${{ github.token }}` | Token used to call inference and post the review. The installed workflow passes a `blacksmith-reviewer` app installation token so reviews appear under the app's identity. Don't change this. |
 | `min-severity` | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.          |
 
 If your reviews suddenly stop appearing, the first thing to check is whether this file still exists in your repo — accidental deletions happen, and without it nothing runs.
@@ -69,12 +72,12 @@ If your reviews suddenly stop appearing, the first thing to check is whether thi
 ### Day-to-day: automatic
 Just work the way you normally would. Every time you open a PR or push commits to one, a review is triggered. No action on your part.
 
-### On demand: `@blacksmith-dev`
+### On demand: `@blacksmith-reviewer`
 
-Want the team to look again — maybe after a refactor, or because the first review felt off? Drop a comment anywhere in the PR thread mentioning **`@blacksmith-dev`**:
+Want the team to look again — maybe after a refactor, or because the first review felt off? Drop a comment anywhere in the PR thread mentioning **`@blacksmith-reviewer`**:
 
 ```
-@blacksmith-dev can you take another look — I restructured the auth flow.
+@blacksmith-reviewer can you take another look — I restructured the auth flow.
 ```
 
 A fresh review will appear within a few seconds.
@@ -154,8 +157,8 @@ If you think a review is *systematically* off — not one finding, but a pattern
 
 These are gaps the Experience knows about and is closing:
 
-- Reviews currently post as **`github-actions[bot]`**, not as the distinct named persona who's reviewing you. The persona layer (Senior Frontend, Senior Backend, Senior Database, Staff, …) is being built — soon each review will come from a teammate with a name.
-- On PRs from **forks**, GitHub doesn't grant the action write access to your repo, so the review will fail to post. The Experience normally won't have you working from forks; if you hit this, mention it in your standup.
+- Reviews post under a single shared `blacksmith-reviewer[bot]` identity. Per-persona identities (Senior Frontend, Senior Backend, Senior Database, Staff, …) — each as their own named GitHub app — are being built; soon each review will come from a teammate with a distinct face and name.
+- On PRs from **forks**, GitHub doesn't grant the workflow the secrets needed to mint the app token, so the review will fail to post. The Experience normally won't have you working from forks; if you hit this, mention it in your standup.
 - **One review pass per PR.** No multi-pass voting, no self-fix suggestions. The hosted Blacksmith reviewer (separate, post-graduation product) does more.
 
 ---

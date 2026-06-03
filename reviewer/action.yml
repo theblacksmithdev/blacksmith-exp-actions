@@ -12,7 +12,11 @@ inputs:
     required: false
     default: "openai/gpt-4o-mini"
   github-token:
-    description: "Token used for GitHub Models inference and posting the review."
+    description: >-
+      Token used for GitHub Models inference and posting the review. Pass a
+      GitHub App installation token (e.g. from actions/create-github-app-token)
+      to have reviews appear under the app's identity instead of github-actions[bot].
+      The app must hold contents:read, pull-requests:write, and models:read.
     required: false
     default: ${{ github.token }}
   min-severity:
