@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from blacksmith.actions.reviewer.findings import Finding, FindingsResponse
+from blacksmith.actions.reviewer.findings import Finding, FindingsResponse, Reference
 from blacksmith.actions.reviewer.severity import Severity
 
 
@@ -31,6 +31,38 @@ class TestFindingModel:
     def test_rejects_invalid_severity_string(self) -> None:
         with pytest.raises(ValueError):
             Finding(file="a.py", line=1, severity="bogus", title="t", body="b")
+
+
+class TestReferences:
+    def test_finding_defaults_to_no_references(self) -> None:
+        finding = Finding(file="a.py", line=1, severity="low", title="t", body="b")
+        assert finding.references == []
+
+    def test_accepts_well_formed_reference(self) -> None:
+        finding = Finding(
+            file="a.py",
+            line=1,
+            severity="high",
+            title="t",
+            body="b",
+            references=[
+                {"url": "https://owasp.org/cheatsheet", "why": "OWASP on input validation"},
+            ],
+        )
+        assert len(finding.references) == 1
+        assert isinstance(finding.references[0], Reference)
+        assert finding.references[0].why == "OWASP on input validation"
+
+    def test_rejects_non_http_url(self) -> None:
+        with pytest.raises(ValueError):
+            Finding(
+                file="a.py",
+                line=1,
+                severity="high",
+                title="t",
+                body="b",
+                references=[{"url": "not-a-url", "why": "x"}],
+            )
 
 
 class TestFindingsResponse:

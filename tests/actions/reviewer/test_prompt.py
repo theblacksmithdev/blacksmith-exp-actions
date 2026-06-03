@@ -22,3 +22,9 @@ class TestPromptBuilder:
         assert '"severity"' in content
         assert '"low"' in content
         assert '"critical"' in content
+
+    def test_system_message_describes_references(self) -> None:
+        content = self.builder.system_message().content
+        assert '"references"' in content
+        assert "canonical sources" in content
+        assert "References are optional" in content

@@ -2,9 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 from blacksmith.actions.reviewer.severity import Severity
+
+
+class Reference(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    url: HttpUrl
+    why: str
 
 
 class Finding(BaseModel):
@@ -15,6 +22,7 @@ class Finding(BaseModel):
     severity: Severity
     title: str
     body: str
+    references: list[Reference] = Field(default_factory=list)
 
     @field_validator("severity", mode="before")
     @classmethod

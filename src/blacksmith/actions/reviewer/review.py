@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from blacksmith.actions.reviewer.findings import Finding
+from blacksmith.actions.reviewer.findings import Finding, Reference
 from blacksmith.actions.reviewer.severity import Severity
 from blacksmith.core.github import ReviewBody, ReviewComment
 
@@ -56,7 +56,7 @@ class ReviewBuilder:
         plural = "s" if total != 1 else ""
         header = (
             f"{self.HEADING}\n\n"
-            f"**{total} finding{plural}** — "
+            f"**{total} finding{plural}.** "
             f"{counts[Severity.CRITICAL]} critical, "
             f"{counts[Severity.HIGH]} high, "
             f"{counts[Severity.MEDIUM]} medium, "
@@ -66,17 +66,36 @@ class ReviewBuilder:
             return header
         lines = [header, "", "#### Comments without an inline anchor"]
         for finding in self._summary_only:
-            lines.append(
-                f"- `{finding.file}:{finding.line}` _(**{finding.severity.label}**)_ — "
-                f"**{finding.title}** — {finding.body}"
-            )
+            lines.append(self._format_summary_item(finding))
         return "\n".join(lines)
 
-    @staticmethod
-    def _to_comment(finding: Finding) -> ReviewComment:
+    @classmethod
+    def _format_summary_item(cls, finding: Finding) -> str:
+        head = (
+            f"- `{finding.file}:{finding.line}` _(**{finding.severity.label}**)_ "
+            f"**{finding.title}**: {finding.body}"
+        )
+        refs = cls._render_references(finding.references, inline=True)
+        return f"{head}{refs}" if refs else head
+
+    @classmethod
+    def _to_comment(cls, finding: Finding) -> ReviewComment:
+        body = f"**[{finding.severity.label}] {finding.title}**\n\n{finding.body}"
+        refs = cls._render_references(finding.references, inline=False)
         return ReviewComment(
             path=finding.file,
             line=finding.line,
             side="RIGHT",
-            body=f"**[{finding.severity.label}] {finding.title}**\n\n{finding.body}",
+            body=f"{body}{refs}" if refs else body,
         )
+
+    @staticmethod
+    def _render_references(references: list[Reference], *, inline: bool) -> str:
+        if not references:
+            return ""
+        if inline:
+            parts = [f"[{r.why}]({r.url})" for r in references]
+            return " " + " · ".join(parts)
+        lines = ["", "", "**Read more:**"]
+        lines.extend(f"- [{r.why}]({r.url})" for r in references)
+        return "\n".join(lines)

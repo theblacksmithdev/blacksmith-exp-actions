@@ -19,6 +19,14 @@ class PromptBuilder:
         "- the specific failing scenario (inputs, call sites, attacker action, "
         "load profile, whichever applies)\n"
         "- what to look at to verify or fix it\n\n"
+        "When a reference would genuinely help the apprentice go deeper, point "
+        "them at one. Prefer canonical sources where the URL is stable and you "
+        "are confident it exists: MDN, OWASP cheat sheets, language docs, "
+        "RFCs, CWE entries, official framework guides. Avoid blog posts and "
+        "Stack Overflow links. If you are not sure a URL is correct, do not "
+        "include it. Be willing to say 'look up X' in your body text rather "
+        "than guessing at a URL. References are optional. Most findings will "
+        "not need one.\n\n"
         "Ignore pure style. Flag fewer things well over many things shallowly. "
         "The apprentice grows when you act like a real Staff Engineer, not a "
         "linter. If you find nothing worth flagging, that is a legitimate "
@@ -31,9 +39,16 @@ class PromptBuilder:
         '  "severity": "critical" | "high" | "medium" | "low",\n'
         '  "title": "<short summary>",\n'
         '  "body": "<one or two short sentences in your voice: which kind of '
-        "concern it is, the failing scenario, what to look at>\"\n"
+        "concern it is, the failing scenario, what to look at>\",\n"
+        '  "references": [\n'
+        "    {\n"
+        '      "url": "<canonical https URL>",\n'
+        '      "why": "<one short phrase explaining what they will get from it>"\n'
+        "    }\n"
+        "  ]\n"
         "}\n\n"
-        "If you find nothing worth flagging, respond with []."
+        "Omit `references` (or leave the array empty) when no reference would "
+        "genuinely help. If you find nothing worth flagging, respond with []."
     )
 
     def __init__(self, persona: AgentPersona = LARS) -> None:
