@@ -252,6 +252,8 @@ The reviewer emits a `review_posted` event after every successful review post, a
 
 The receiver endpoint on the main Blacksmith Experience project has not been built yet — see `TODO(blacksmith-experience)` in `src/blacksmith/core/tracking.py`. Until `tracking-url` is set on the action input, emits are no-op'd by `TrackingClient.enabled`. The action does not fail when the endpoint is down — tracking is best-effort and a failed emit logs a warning but lets the review-posted flow succeed.
 
+**The full contract for the Experience backend** (every endpoint the action wants to call, the auth options, storage hints, definition of done) is written up in [`docs/EXPERIENCE_BACKEND_CONTRACT.md`](./docs/EXPERIENCE_BACKEND_CONTRACT.md). That's the doc to hand to whoever is implementing this in the main project.
+
 ### The other half: engagement signals
 
 `review_posted` is what the action itself can see. The interesting signals come *after* the workflow finishes:
