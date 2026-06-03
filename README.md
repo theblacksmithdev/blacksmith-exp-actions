@@ -11,9 +11,9 @@ You're not reviewing alone. The senior engineers on your team look at every PR y
 Within ~30 seconds of opening or pushing to a PR, a review appears from **Lars** (`lars-blacksmith-exp[bot]`) — your team's Staff Engineer. (Per-persona reviewers for each Senior — Frontend, Backend, Database — are on the roadmap; today Lars covers all of it.) It has two parts:
 
 1. **Inline comments** anchored to specific lines you added or changed. Each comment names a severity (`critical` / `high` / `medium` / `low`), a short title, and a concrete failing scenario plus the fix.
-2. **A summary** at the top with the total count, a breakdown by severity, and any findings the reviewer couldn't anchor to a specific line.
+2. **A summary** at the top, in Lars's voice — one to three sentences with his overall read of the PR, the way a senior would describe it at the standup. Something like _"Looks clean. The cache-key collapse on line 84 is the only thing I would not let through, the rest is fine."_ Any findings he couldn't anchor to a specific line appear below the summary in a small notes section.
 
-If there's nothing worth flagging, you'll see `✅ No issues found.` That happens — but don't expect it on every PR. Senior reviewers find things.
+If there's nothing worth flagging, the summary will say so in his voice — _"Ship it."_, _"Nothing to add."_, something along those lines. That happens, but don't expect it on every PR. Senior reviewers find things.
 
 If anything is `critical`, the review is posted as **`REQUEST_CHANGES`** rather than a plain comment. That doesn't block merging in GitHub, but treat it as the team telling you "fix this before we ship."
 

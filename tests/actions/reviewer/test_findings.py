@@ -86,10 +86,16 @@ class TestReferences:
 class TestFindingsResponse:
     def test_round_trip(self) -> None:
         response = FindingsResponse.model_validate({
+            "summary": "Looks clean. Two notes inline.",
             "findings": [
                 {"file": "a.py", "line": 1, "severity": "low", "title": "t", "body": "b"},
                 {"file": "b.py", "line": 2, "severity": "critical", "title": "t", "body": "b"},
-            ]
+            ],
         })
+        assert response.summary == "Looks clean. Two notes inline."
         assert len(response.findings) == 2
         assert response.findings[1].severity is Severity.CRITICAL
+
+    def test_summary_is_required(self) -> None:
+        with pytest.raises(ValueError):
+            FindingsResponse.model_validate({"findings": []})

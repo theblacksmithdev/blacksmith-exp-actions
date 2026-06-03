@@ -85,7 +85,7 @@ class ReviewerAction(Action):
         )
         findings = [f for f in response.findings if f.severity >= self._config.min_severity]
 
-        builder = ReviewBuilder(findings, anchor_map)
+        builder = ReviewBuilder(findings, anchor_map, summary=response.summary)
         self._github.create_review(self._config.repo, pr_number, builder.build(pr.head.sha))
 
         self._logger.info(

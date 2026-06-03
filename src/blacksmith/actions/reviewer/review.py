@@ -6,16 +6,17 @@ from blacksmith.core.github import ReviewBody, ReviewComment
 
 
 class ReviewBuilder:
-    HEADING = "### Blacksmith review"
-    CLEAN_BODY = f"{HEADING}\n\n✅ No issues found."
+    FALLBACK_SUMMARY = "Nothing to add."
 
     def __init__(
         self,
         findings: list[Finding],
         anchor_map: dict[str, set[int]],
+        summary: str,
     ) -> None:
         self._findings = findings
         self._anchor_map = anchor_map
+        self._summary = summary.strip() or self.FALLBACK_SUMMARY
         self._inline, self._summary_only = self._split()
 
     @property
@@ -47,24 +48,9 @@ class ReviewBuilder:
         return "REQUEST_CHANGES" if has_critical else "COMMENT"
 
     def _body(self) -> str:
-        if not self._findings:
-            return self.CLEAN_BODY
-        total = len(self._findings)
-        counts = {sev: 0 for sev in Severity}
-        for finding in self._findings:
-            counts[finding.severity] += 1
-        plural = "s" if total != 1 else ""
-        header = (
-            f"{self.HEADING}\n\n"
-            f"**{total} finding{plural}.** "
-            f"{counts[Severity.CRITICAL]} critical, "
-            f"{counts[Severity.HIGH]} high, "
-            f"{counts[Severity.MEDIUM]} medium, "
-            f"{counts[Severity.LOW]} low."
-        )
         if not self._summary_only:
-            return header
-        lines = [header, "", "#### Comments without an inline anchor"]
+            return self._summary
+        lines = [self._summary, "", "---", "", "_Notes I couldn't anchor to a specific line:_"]
         for finding in self._summary_only:
             lines.append(self._format_summary_item(finding))
         return "\n".join(lines)

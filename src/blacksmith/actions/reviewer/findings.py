@@ -65,4 +65,5 @@ class Finding(BaseModel):
 
 
 class FindingsResponse(BaseModel):
+    summary: str
     findings: list[Finding]
