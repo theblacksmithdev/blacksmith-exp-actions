@@ -1,140 +1,112 @@
-# Blacksmith — Experience Actions
+# Blacksmith — Code Review
 
-GitHub-runner-side infrastructure for the **Blacksmith Experience** — an apprenticeship program in which a coordinated team of AI agents (Engineering Manager, Tech Lead, Staff Engineer, Senior Frontend / Backend / Database Engineers, PM, Designer, Platform, Security, QA) develops a real user from junior toward verified senior-level engineering capability through simulated team membership.
+Senior-engineer code review on every pull request in your **Blacksmith Experience** apprenticeship.
 
-Every persona's PR-facing behaviour — reviewing the user's code, opening PRs the user is meant to review, conducting standups in PR threads, running retros — runs as a registered action in this repository. The user's growth is recorded in their **real GitHub profile**: real PRs, real reviews, real work, verifiable by future employers.
-
-This repo is the GitHub-actor layer of the Experience. The web product at `experience.blacksmith.dev` is what learners log into; this is what the agents use on the runner.
+You're not reviewing alone. The senior engineers on your team look at every PR you open — checking correctness, security, and design — and post their feedback as a real GitHub review. This page explains what you'll see, how to invoke them again, and how to read what they give you.
 
 ---
 
-## Currently shipping
+## What you'll see on a PR
 
-### `reviewer` — senior-engineer code review
+Within ~30 seconds of opening or pushing to a PR, a review appears from `github-actions[bot]` (the persona layer that gives each senior a distinct GitHub identity is on the roadmap). It has two parts:
 
-The Experience installs this action in the learner's project repository. On every pull request (and on `@blacksmith-dev` mentions in PR comments), a senior-engineer persona reviews the code: inline comments anchored to changed lines, and a summary with severity counts.
+1. **Inline comments** anchored to specific lines you added or changed. Each comment names a severity (`critical` / `high` / `medium` / `low`), a short title, and a concrete failing scenario plus the fix.
+2. **A summary** at the top with the total count, a breakdown by severity, and any findings the reviewer couldn't anchor to a specific line.
 
-The Experience installs the following workflow at `.github/workflows/blacksmith-review.yml` in the learner's repo:
+If there's nothing worth flagging, you'll see `✅ No issues found.` That happens — but don't expect it on every PR. Senior reviewers find things.
 
-```yaml
-name: Blacksmith Dev — Code Review
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  issue_comment:
-    types: [created]
-permissions:
-  contents: read
-  pull-requests: write
-  models: read
-jobs:
-  review:
-    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@blacksmith-dev'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: blacksmith-dev/reviewer@v1
-        with:
-          model: openai/gpt-4o-mini
-```
+If anything is `critical`, the review is posted as **`REQUEST_CHANGES`** rather than a plain comment. That doesn't block merging in GitHub, but treat it as the team telling you "fix this before we ship."
 
-#### Inputs
-
-| Input          | Required | Default               | Purpose                                                                 |
-|----------------|----------|-----------------------|-------------------------------------------------------------------------|
-| `model`        | no       | `openai/gpt-4o-mini`  | GitHub Models catalog id used for inference.                            |
-| `github-token` | no       | `${{ github.token }}` | Token used both for inference (GitHub Models) and posting the review.   |
-| `min-severity` | no       | `low`                 | Lowest severity to post. One of `low`, `medium`, `high`, `critical`.    |
-
-#### Custom review rules (optional)
-
-If the learner's repo has a file at `.blacksmith/REVIEW.md`, the reviewer reads it at the PR's `head` commit and includes it as project-specific rules in the prompt.
-
-#### Current gaps (tracked, not abandoned)
-
-The reviewer in its v1 form predates the Experience's persona layer. Three things are deliberately incomplete and will land before the Experience opens to learners:
-
-- **Persona is a placeholder.** The current prompt addresses a generic "Dev" senior reviewer. The Experience requires named personas (Senior Frontend / Backend / Database, Staff) each with a distinct communication style, opinions, and a developmental mandate over specific competencies.
-- **Identity is `github-actions[bot]`.** Each agent must instead authenticate as its own GitHub App so the PR conversation feels like a real team with distinct teammates.
-- **Findings do not yet update competency state.** Every observation a senior makes about the learner is supposed to flow into a structured competency record that the Engineering Manager reads before level reviews. The reviewer currently only posts the GitHub-side artefacts.
-
-Each of these has a planned home in the architecture below.
+The reviewer **never auto-approves**. Approval is a teammate's judgment call, not the machine's.
 
 ---
 
-## Architecture
+## How to use it
+
+### Automatically
+Just work the way you normally would. Every time you:
+- open a PR, or
+- push new commits to an existing PR,
+
+a review is triggered.
+
+### On demand
+Want the team to look again — maybe after a refactor, or because the first review felt off? Drop a comment anywhere in the PR thread mentioning **`@blacksmith-dev`**:
 
 ```
-action.yml                              # Reviewer composite action (root)
-pyproject.toml                          # Python package config
-src/blacksmith/
-├── __main__.py                         # `python -m blacksmith <action>`
-├── core/                               # shared building blocks, reusable across all actions
-│   ├── http.py                         # HttpClient (httpx wrapper)
-│   ├── github.py                       # GitHubClient + DTOs
-│   ├── inference.py                    # GitHubModelsClient
-│   ├── diff.py                         # DiffParser
-│   ├── event.py                        # EventContext
-│   ├── logging.py                      # LoggingConfigurator
-│   └── exceptions.py
-└── actions/
-    ├── base.py                         # Action ABC: from_env() + run()
-    ├── registry.py                     # ActionRegistry (decorator-based)
-    └── reviewer/
-        ├── action.py                   # ReviewerAction(Action)
-        ├── config.py                   # ReviewerConfig
-        ├── findings.py                 # Finding + FindingsParser
-        ├── prompt.py                   # PromptBuilder
-        ├── review.py                   # ReviewBuilder
-        └── severity.py                 # Severity enum
-tests/
-├── core/test_diff.py
-└── actions/reviewer/test_findings.py, test_review.py
+@blacksmith-dev can you take another look — I restructured the auth flow.
 ```
 
-### Planned layers (not yet built)
+A fresh review will appear within a few seconds.
 
-- `src/blacksmith/personas/` — persona definitions (name, voice, opinions, developmental mandate over competencies). Each action selects a persona per run.
-- `src/blacksmith/core/auth.py` — `GitHubAppAuth` for minting per-persona installation tokens from App private keys. Replaces the use of the default `GITHUB_TOKEN` for identity-bearing actions.
-- `src/blacksmith/core/competency.py` — writer for the competency-state store (structured observations consumed by the Engineering Manager during level reviews).
+### With project-specific guidance
+If your project has rules a generic reviewer wouldn't know — naming conventions, architectural constraints, "we always do X here" — write them into **`.blacksmith/REVIEW.md`** in your repo. The reviewer reads that file at the PR's head commit and obeys it. Treat it as a way to teach the team about your project's idioms.
 
-### Planned actions (not yet built)
-
-- `honesty-audit` — the separate review pass that grades the EM's feedback for honesty before it reaches the user. Load-bearing for the credential's integrity.
-- `standup` — drives the daily standup as a PR-thread / discussion conversation.
-- `intern-pr` — opens PRs from the junior Intern agent for the user to review (the user develops the Mentorship competency at Level 3+).
-- `retro` — runs the sprint retrospective and writes the resulting observations into competency state.
-- `level-review` — proctors the user's transition between competency levels.
-- `capstone` — administers the Senior Verification at Level 5.
-
----
-
-## Adding a new action
-
-1. Create `src/blacksmith/actions/<your_action>/action.py` with a class that subclasses `Action`, sets `name = "<your_action>"`, and is decorated with `@ActionRegistry.register`.
-2. Implement `from_env()` (build dependencies from environment) and `run() -> int`.
-3. Reuse anything you need from `blacksmith.core` (HTTP, GitHub, inference, diff, event).
-4. Import the new action in `src/blacksmith/actions/__init__.py` so the registry sees it at startup.
-5. Ship a sibling repo `blacksmith-dev/<your_action>` whose `action.yml` runs `pip install "$GITHUB_ACTION_PATH"` then `python -m blacksmith <your_action>`.
-
----
-
-## Local development
-
-```bash
-pip install -e ".[dev]"
-ruff check src tests
-pytest
+Example `.blacksmith/REVIEW.md`:
+```markdown
+- All API handlers must validate input with our `validators.py` module.
+- New database queries must go through `db.session.scope()`, not raw `db.execute()`.
+- Anything under `internal/` is not part of the public API; flag any export from there.
 ```
 
-CI runs the same three steps on every push and PR.
+---
+
+## Reading the feedback
+
+### Severity, what it actually means
+- **`critical`** — bug or vulnerability that will hurt someone in production. Fix before merging.
+- **`high`** — clearly wrong; will cause real problems even if not immediate.
+- **`medium`** — design or correctness issue that a senior engineer would want addressed.
+- **`low`** — minor; worth noting, won't usually block a merge.
+
+You can raise the floor with the `min-severity` workflow input if you want only `high` and above. Your Experience setup may have configured this for you already.
+
+### What files get reviewed
+Source files in: `.py .js .ts .tsx .jsx .go .rb .java .rs`. Everything else (docs, configs, lockfiles, assets) is skipped. Deleted files are skipped. If your PR only touches non-reviewable files, you'll see no review and that's expected.
 
 ---
 
-## Versioning
+## If you disagree with a finding
 
-Releases are tagged `vMAJOR.MINOR.PATCH`. A moving `v1` tag tracks the latest 1.x release — the Experience product pins to `@v1`, and rolling the tag forward propagates fixes and improvements to every learner repo without per-repo workflow edits.
+You will, eventually. Pushing back is part of the apprenticeship, not a violation of it.
+
+- **Reply in the PR thread.** Make your argument the same way you would with a human teammate. Be specific: name the assumption you think the reviewer got wrong, or the constraint they didn't see.
+- **Don't silently dismiss.** "I disagree" without engagement is something a junior does. Stating *why* you disagree, in a way a senior teammate would find compelling, is the muscle the Experience is building.
+- **Sometimes the reviewer is wrong.** It happens. When it does, your reasoning gets recorded as evidence of your judgment — which feeds into how your competencies are tracked.
+- **Sometimes the reviewer is right and the feedback stings.** That's the calibration working as designed. Senior engineers in strong teams give feedback you'd rather not hear; one of the things the Experience is investing in is your ability to receive it without flinching.
+
+If you think a review is *systematically* off — not one finding, but a pattern — talk to your Engineering Manager in the Experience web app. That's exactly the kind of issue they're there for.
 
 ---
+
+## What you should *not* do
+
+- **Don't disable or modify the workflow file** the Experience installed. Your level reviews depend on the team having a continuous record of the work you shipped and the feedback you got on it. If you turn this off, your EM has nothing to calibrate against.
+- **Don't game the reviewer** by structuring PRs to avoid flagged patterns rather than fixing the underlying issue. The team observes the *pattern* of your work over many PRs; the per-PR score isn't what matters.
+
+---
+
+## Known limitations (today)
+
+These are gaps the Experience knows about and is closing:
+
+- Reviews currently post as **`github-actions[bot]`**, not as the distinct named persona who's reviewing you. The persona layer (Senior Frontend, Senior Backend, Senior Database, Staff, …) is being built — soon each review will come from a teammate with a name.
+- On PRs from **forks**, GitHub doesn't grant the action write access to your repo, so the review will fail to post. The Experience normally won't have you working from forks; if you hit this, mention it in your standup.
+- **One review pass per PR.** No multi-pass voting, no self-fix suggestions. The hosted Blacksmith reviewer (separate, post-graduation product) does more.
+
+---
+
+## Questions
+
+- **About a specific review** → reply on the PR. The team reads PR threads.
+- **About how the reviewer works** → ask your Tech Lead in the Experience.
+- **About your growth / whether the reviews are landing fairly** → that's a 1:1 with your EM.
+
+---
+
+## For Blacksmith engineers
+
+If you're maintaining this codebase or adding new actions, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## License
 
