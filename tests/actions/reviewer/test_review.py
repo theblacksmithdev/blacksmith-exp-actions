@@ -24,7 +24,7 @@ def _f(
 
 
 def _ref(url: str, why: str) -> Reference:
-    return Reference(url=url, why=why)  # type: ignore[arg-type]
+    return Reference(url=url, why=why)
 
 
 class TestReviewBuilder:

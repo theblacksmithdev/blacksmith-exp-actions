@@ -53,16 +53,34 @@ class TestReferences:
         assert isinstance(finding.references[0], Reference)
         assert finding.references[0].why == "OWASP on input validation"
 
-    def test_rejects_non_http_url(self) -> None:
+    def test_reference_rejects_non_http_url_directly(self) -> None:
         with pytest.raises(ValueError):
-            Finding(
-                file="a.py",
-                line=1,
-                severity="high",
-                title="t",
-                body="b",
-                references=[{"url": "not-a-url", "why": "x"}],
-            )
+            Reference(url="not-a-url", why="x")
+
+    def test_finding_silently_drops_invalid_references(self) -> None:
+        finding = Finding(
+            file="a.py",
+            line=1,
+            severity="high",
+            title="t",
+            body="b",
+            references=[
+                {"url": "https://owasp.org/x", "why": "good"},
+                {"url": "javascript:alert(1)", "why": "bad scheme"},
+                {"url": "garbage", "why": "no host"},
+            ],
+        )
+        assert len(finding.references) == 1
+        assert finding.references[0].why == "good"
+
+    def test_schema_does_not_use_uri_format(self) -> None:
+        """GitHub Models' structured-output schema rejects format: 'uri'.
+        pydantic's HttpUrl emits that, plain str does not."""
+        from blacksmith.actions.reviewer.findings import FindingsResponse
+
+        schema_text = str(FindingsResponse.model_json_schema())
+        assert "'uri'" not in schema_text
+        assert '"uri"' not in schema_text
 
 
 class TestFindingsResponse:
