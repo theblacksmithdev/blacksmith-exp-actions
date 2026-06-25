@@ -63,7 +63,10 @@ class ReviewerAction(Action):
             config=config,
             github_client=GitHubClient(config.github_token),
             inference_client=GitHubModelsClient(config.inference_token),
-            tracking_client=TrackingClient(config.tracking_url),
+            tracking_client=TrackingClient(
+                config.tracking_url,
+                oidc_audience=config.oidc_audience,
+            ),
             project=Project(config.project_id),
             event=EventContext.from_env(),
         )
@@ -116,7 +119,12 @@ class ReviewerAction(Action):
             builder.inline_count,
             builder.summary_only_count,
         )
-        self._emit_review_posted(pr_number=pr_number, commit_sha=pr.head.sha, findings=findings)
+        self._emit_review_posted(
+            pr_number=pr_number,
+            commit_sha=pr.head.sha,
+            head_branch=getattr(pr.head, 'ref', '') or '',
+            findings=findings,
+        )
         return 0
 
     def _respond(self, pr_number: int) -> int:
@@ -148,9 +156,20 @@ class ReviewerAction(Action):
         return 0
 
     def _emit_review_posted(
-        self, *, pr_number: int, commit_sha: str, findings: list[Finding]
+        self,
+        *,
+        pr_number: int,
+        commit_sha: str,
+        head_branch: str,
+        findings: list[Finding],
     ) -> None:
-        if self._config.project_id is None:
+        # Emit as long as tracking is wired (i.e. a tracking_url is
+        # configured). Project resolution happens server-side: with
+        # OIDC the backend reads the JWT's (repository, actor)
+        # claims, so the action no longer needs to carry a
+        # project_id. Legacy callers that still set project_id pass
+        # it through unchanged.
+        if not self._tracking.enabled:
             return
         by_severity = Counter(f.severity.name.lower() for f in findings)
         self._tracking.review_posted(
@@ -158,6 +177,7 @@ class ReviewerAction(Action):
                 project_id=self._config.project_id,
                 pr_number=pr_number,
                 commit_sha=commit_sha,
+                branch=head_branch,
                 model=self._config.model,
                 findings_total=len(findings),
                 findings_by_severity=dict(by_severity),

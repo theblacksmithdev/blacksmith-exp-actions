@@ -20,6 +20,12 @@ class ReviewerConfig(BaseSettings):
     min_severity: Severity = Severity.LOW
     project_id: UUID | None = None
     tracking_url: str = ""
+    # Audience claim the action passes to GitHub when minting an OIDC
+    # token for the tracking callback. The backend verifies this
+    # matches its configured `GITHUB_OIDC_AUDIENCE` setting. Leave
+    # blank to disable OIDC — the tracking POST then goes out without
+    # an auth header (only useful for tests / pre-auth backends).
+    oidc_audience: str = ""
 
     @model_validator(mode="after")
     def _default_inference_token(self) -> ReviewerConfig:

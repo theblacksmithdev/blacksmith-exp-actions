@@ -60,6 +60,16 @@ inputs:
     required: false
     # TODO(blacksmith-experience): set a default once the endpoint is live.
     default: ""
+  oidc-audience:
+    description: >-
+      Audience claim for the GitHub Actions OIDC token used to
+      authenticate tracking callbacks. Must match the backend's
+      GITHUB_OIDC_AUDIENCE setting. When set, the workflow must
+      grant `permissions: id-token: write` — otherwise the action
+      can't mint the token and falls back to posting unauthenticated.
+      Leave empty to skip OIDC entirely.
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -92,4 +102,12 @@ runs:
         MIN_SEVERITY: ${{ inputs.min-severity }}
         PROJECT_ID: ${{ inputs.project-id }}
         TRACKING_URL: ${{ inputs.tracking-url }}
+        OIDC_AUDIENCE: ${{ inputs.oidc-audience }}
+        # GitHub Actions injects these automatically when the
+        # workflow grants `permissions: id-token: write`. Pass them
+        # through explicitly so a composite-action env block doesn't
+        # accidentally shadow them — `mint_id_token` reads them
+        # directly via `os.environ`.
+        ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
       run: python -m blacksmith reviewer
