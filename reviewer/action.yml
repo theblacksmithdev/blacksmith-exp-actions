@@ -20,8 +20,29 @@ inputs:
   app-private-key:
     description: >-
       PEM-formatted private key for the GitHub App named in app-id. When set, the
-      action mints a short-lived installation token and uses it instead of
-      github-token. Apprentice repos pass secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY here.
+      action mints a short-lived installation token locally and uses it instead
+      of github-token. Prefer app-token-broker-url for production — it keeps the
+      private key out of the apprentice's repo. This input stays for local dev
+      and as a fallback.
+    required: false
+    default: ""
+  app-token-broker-url:
+    description: >-
+      URL of the Blacksmith-hosted broker that exchanges a GitHub Actions OIDC
+      token for an App installation token. When set, the action mints an OIDC
+      JWT and POSTs it here in place of holding the App's private key locally.
+      Apprentice repos hold zero secrets; the broker holds the key centrally
+      and returns a scoped installation token after verifying the OIDC claims
+      and confirming the App is installed on the calling repo. The workflow
+      must grant `permissions: id-token: write` for this to work. Takes
+      precedence over app-private-key when both are set.
+    required: false
+    default: ""
+  app-token-broker-audience:
+    description: >-
+      Audience claim for the OIDC JWT minted for the broker. Must match what
+      the broker validates against. Defaults to the broker URL, which works
+      when the broker accepts its own URL as the audience.
     required: false
     default: ""
   github-token:
@@ -74,9 +95,53 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Mint app installation token
+    - name: Mint installation token via broker
+      # Preferred production path. Mints a GitHub Actions OIDC JWT and
+      # exchanges it at the broker for an installation token. The
+      # apprentice repo holds no App secrets — the broker holds the
+      # private key centrally and verifies the OIDC claims before
+      # returning a scoped token.
+      id: broker-token
+      if: inputs.app-token-broker-url != ''
+      uses: actions/github-script@v7
+      env:
+        BROKER_URL: ${{ inputs.app-token-broker-url }}
+        BROKER_AUDIENCE: ${{ inputs.app-token-broker-audience }}
+        APP_ID: ${{ inputs.app-id }}
+      with:
+        script: |
+          const brokerUrl = process.env.BROKER_URL;
+          const audience = process.env.BROKER_AUDIENCE || brokerUrl;
+          const appId = process.env.APP_ID;
+
+          const oidcToken = await core.getIDToken(audience);
+          const response = await fetch(brokerUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${oidcToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ app_id: appId }),
+          });
+          if (!response.ok) {
+            const body = await response.text();
+            core.setFailed(`Token broker returned ${response.status}: ${body}`);
+            return;
+          }
+          const data = await response.json();
+          if (!data.token) {
+            core.setFailed('Token broker response missing required "token" field');
+            return;
+          }
+          core.setSecret(data.token);
+          core.setOutput('token', data.token);
+
+    - name: Mint app installation token locally
+      # Fallback when no broker is configured. Requires the App's
+      # private key in the repo as a secret. Skipped when the broker
+      # is in use so we don't mint twice on every run.
       id: app-token
-      if: inputs.app-private-key != ''
+      if: inputs.app-private-key != '' && inputs.app-token-broker-url == ''
       uses: actions/create-github-app-token@v1
       with:
         app-id: ${{ inputs.app-id }}
@@ -94,7 +159,7 @@ runs:
     - name: Run reviewer
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ steps.app-token.outputs.token || inputs.github-token }}
+        GITHUB_TOKEN: ${{ steps.broker-token.outputs.token || steps.app-token.outputs.token || inputs.github-token }}
         INFERENCE_TOKEN: ${{ inputs.inference-token }}
         REPO: ${{ github.repository }}
         EVENT_NAME: ${{ github.event_name }}

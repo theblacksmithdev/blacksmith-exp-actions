@@ -54,22 +54,59 @@ What each piece does:
 - **`on: issue_comment`** + the `if:` block — enables the on-demand re-review when you mention `@lars-blacksmith-exp` in a PR comment. The filter ensures it only fires on PR comments (not plain issues), and not on comments from other bots.
 - **`permissions: models: read`** — needed on the workflow's `GITHUB_TOKEN` so the action can call GitHub Models for inference. The App's installation token is used to post the review under the bot identity, but inference uses the workflow token because App installation tokens don't carry the `models` permission.
 - **`uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1`** — pins to the moving `v1` tag so you get improvements automatically. The `/reviewer` segment selects the reviewer action from the monorepo; future actions live at sibling paths (e.g. `/triager`, `/standup`).
-- **`app-private-key`** — the only secret apprentices need. The action uses it to mint a short-lived installation token at job start and posts the review under Lars's identity (`lars-blacksmith-exp[bot]`). The App ID is hardcoded in the action's default — it's not a secret.
+- **`app-private-key`** — used in the example for simplicity. Lars's installation token comes from this. For production, prefer `app-token-broker-url` so the apprentice repo holds zero secrets and the private key stays on Blacksmith infrastructure. See the "Two ways to give the action Lars's identity" section below.
 - **`with:` inputs** — see the table below.
 
 #### Inputs you can tune
 
-| Input             | Default               | What it does                                                                                   |
-|-------------------|-----------------------|------------------------------------------------------------------------------------------------|
-| `model`           | `openai/gpt-4o-mini`  | Which GitHub Models LLM the senior team uses. Any catalog id works.                            |
-| `app-private-key` | _(none)_              | Private key for the `lars-blacksmith-exp` GitHub App. Provisioned for you as a repo secret.    |
-| `app-id`          | `3948048`             | App ID for `lars-blacksmith-exp`. Hardcoded — not a secret. Don't change this.                 |
-| `github-token`    | `${{ github.token }}` | Fallback token used only if `app-private-key` is empty. Posts as `github-actions[bot]`.        |
-| `min-severity`    | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.                               |
-| `project-id`      | _(none)_              | UUID of your Blacksmith Experience project. Provisioned for you as a repo secret. Links Lars's reviews back to your apprenticeship state. |
-| `tracking-url`    | _(none)_              | Base URL of the Experience tracking endpoint. Set by the Experience platform.                  |
+| Input                       | Default               | What it does                                                                                   |
+|-----------------------------|-----------------------|------------------------------------------------------------------------------------------------|
+| `model`                     | `openai/gpt-4o-mini`  | Which GitHub Models LLM the senior team uses. Any catalog id works.                            |
+| `app-token-broker-url`      | _(none)_              | URL of the Blacksmith token broker. Set this for the keyless production path; the apprentice repo holds no App secrets and the broker mints the installation token after verifying the workflow's OIDC claims. Provisioned by the Experience platform. |
+| `app-token-broker-audience` | _(broker URL)_        | Audience claim for the broker's OIDC JWT. Defaults to the broker URL.                          |
+| `app-private-key`           | _(none)_              | PEM-formatted private key for the `lars-blacksmith-exp` GitHub App. Local-dev / fallback path when no broker is configured. |
+| `app-id`                    | `3948048`             | App ID for `lars-blacksmith-exp`. Hardcoded — not a secret. Don't change this.                 |
+| `github-token`              | `${{ github.token }}` | Last-resort fallback. Used only when neither the broker nor the private key is set. Posts as `github-actions[bot]`. |
+| `min-severity`              | `low`                 | Lowest severity to post. `low` / `medium` / `high` / `critical`.                               |
+| `project-id`                | _(none)_              | UUID of your Blacksmith Experience project. Provisioned for you as a repo secret. Links Lars's reviews back to your apprenticeship state. |
+| `tracking-url`              | _(none)_              | Base URL of the Experience tracking endpoint. Set by the Experience platform.                  |
 
-If your reviews suddenly stop appearing, the first thing to check is whether this file still exists in your repo — accidental deletions happen, and without it nothing runs.
+#### Two ways to give the action Lars's identity
+
+Pick one. Both end with the same outcome: the action holds a short-lived installation token and posts as `lars-blacksmith-exp[bot]`. They differ in where the App's private key lives.
+
+**Broker mode (preferred for production)** — apprentice repo holds nothing. The workflow grants `id-token: write`, mints a GitHub Actions OIDC JWT, and POSTs it to the Blacksmith-hosted broker. The broker verifies the JWT signature and claims, confirms the App is installed on the calling repo, mints an installation token with the private key it holds centrally, and returns it. Set `app-token-broker-url` and leave `app-private-key` empty.
+
+```yaml
+permissions:
+  models: read
+  id-token: write          # required for the OIDC mint
+jobs:
+  review:
+    steps:
+      - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
+        with:
+          app-token-broker-url: https://broker.blacksmith.dev/installation-token
+          project-id: ${{ secrets.BLACKSMITH_PROJECT_ID }}
+```
+
+**Local-key mode (fallback)** — the App's private key sits in the apprentice repo as a secret. The action mints the installation token directly. Simpler to wire up, no broker needed, but the key is per-repo. Use this for local dev, smoke tests, or repos that can't reach the broker.
+
+```yaml
+permissions:
+  models: read
+jobs:
+  review:
+    steps:
+      - uses: theblacksmithdev/blacksmith-exp-actions/reviewer@v1
+        with:
+          app-private-key: ${{ secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY }}
+          project-id: ${{ secrets.BLACKSMITH_PROJECT_ID }}
+```
+
+If both are set, the broker wins. If neither is set, the action falls back to `${{ github.token }}` and posts as `github-actions[bot]` — that's the signal to check your wiring.
+
+If your reviews suddenly stop appearing, the first thing to check is whether this workflow file still exists in your repo — accidental deletions happen, and without it nothing runs.
 
 ### Day-to-day: automatic
 Just work the way you normally would. Every time you open a PR or push commits to one, a review is triggered. No action on your part.
