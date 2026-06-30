@@ -22,9 +22,19 @@ class Message(BaseModel):
 class GitHubModelsClient:
     BASE_URL = "https://models.github.ai/inference"
     DEFAULT_TEMPERATURE = 0.2
+    # The OpenAI SDK retries 408/409/429/5xx and connection errors with
+    # exponential backoff and honors Retry-After. Permanent failures
+    # (400/401/403/413/422) are not retried. Bumping above the SDK
+    # default of 2 buys the action more headroom against transient
+    # GitHub Models blips before the principles-note fallback fires.
+    MAX_RETRIES = 5
 
     def __init__(self, token: str) -> None:
-        self._client = OpenAI(api_key=token, base_url=self.BASE_URL)
+        self._client = OpenAI(
+            api_key=token,
+            base_url=self.BASE_URL,
+            max_retries=self.MAX_RETRIES,
+        )
 
     def parse(
         self,

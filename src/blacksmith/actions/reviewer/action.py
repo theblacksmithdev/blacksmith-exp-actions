@@ -12,11 +12,13 @@ from blacksmith.actions.reviewer.conversation import (
     ThreadComment,
 )
 from blacksmith.actions.reviewer.findings import Finding, FindingsResponse
+from blacksmith.actions.reviewer.principles import PrinciplesBuilder, PrinciplesResponse
 from blacksmith.actions.reviewer.prompt import PromptBuilder
 from blacksmith.actions.reviewer.review import ReviewBuilder
 from blacksmith.core.diff import DiffParser
 from blacksmith.core.event import EventContext
-from blacksmith.core.github import ChangedFile, GitHubClient, IssueComment
+from blacksmith.core.exceptions import InferenceError
+from blacksmith.core.github import ChangedFile, GitHubClient, IssueComment, PullRequest, ReviewBody
 from blacksmith.core.inference import GitHubModelsClient
 from blacksmith.core.project import Project
 from blacksmith.core.tracking import ReviewPostedEvent, TrackingClient
@@ -44,6 +46,7 @@ class ReviewerAction(Action):
         diff_parser: DiffParser | None = None,
         prompt_builder: PromptBuilder | None = None,
         conversation_builder: ConversationBuilder | None = None,
+        principles_builder: PrinciplesBuilder | None = None,
     ) -> None:
         super().__init__()
         self._config = config
@@ -55,6 +58,7 @@ class ReviewerAction(Action):
         self._diff_parser = diff_parser or DiffParser()
         self._prompt_builder = prompt_builder or PromptBuilder()
         self._conversation_builder = conversation_builder or ConversationBuilder()
+        self._principles_builder = principles_builder or PrinciplesBuilder()
 
     @classmethod
     def from_env(cls) -> ReviewerAction:
@@ -104,11 +108,19 @@ class ReviewerAction(Action):
                 pr_title=pr.title or "", rules=rules, files=reviewable
             ),
         ]
-        response = self._inference.parse(
-            model=self._config.model,
-            messages=messages,
-            response_format=FindingsResponse,
-        )
+        try:
+            response = self._inference.parse(
+                model=self._config.model,
+                messages=messages,
+                response_format=FindingsResponse,
+            )
+        except InferenceError as exc:
+            self._logger.warning(
+                "could not run line-by-line review (%s); posting principles note",
+                exc,
+            )
+            self._post_principles_review(pr_number, pr=pr, files=files)
+            return 0
         findings = [f for f in response.findings if f.severity >= self._config.min_severity]
 
         builder = ReviewBuilder(findings, anchor_map, summary=response.summary)
@@ -154,6 +166,52 @@ class ReviewerAction(Action):
         self._github.create_issue_comment(self._config.repo, pr_number, body)
         self._logger.info("posted reply: %d characters", len(body))
         return 0
+
+    def _post_principles_review(
+        self,
+        pr_number: int,
+        *,
+        pr: PullRequest,
+        files: list[ChangedFile],
+    ) -> None:
+        messages = self._principles_builder.messages(
+            pr_title=pr.title or "",
+            file_count=len(files),
+            additions=sum(f.additions for f in files),
+            deletions=sum(f.deletions for f in files),
+        )
+        try:
+            response = self._inference.parse(
+                model=self._config.model,
+                messages=messages,
+                response_format=PrinciplesResponse,
+            )
+            body = response.body.strip() or self._principles_fallback()
+        except InferenceError as exc:
+            # The principles prompt is small by construction, so a second
+            # failure means something deeper is wrong (auth, network,
+            # endpoint). Don't fail the workflow on top of that; leave a
+            # short note so the apprentice still gets feedback and the
+            # cause shows up in the action log.
+            self._logger.warning("fallback inference also failed: %s", exc)
+            body = self._principles_fallback()
+        self._github.create_review(
+            self._config.repo,
+            pr_number,
+            ReviewBody(commit_id=pr.head.sha, body=body, event="COMMENT"),
+        )
+
+    @staticmethod
+    def _principles_fallback() -> str:
+        # Last-resort body when the principles inference call returns an
+        # empty body or fails outright. Kept short and in-voice so the
+        # apprentice still has something actionable to walk against.
+        return (
+            "Cannot give this a proper read right now. "
+            "Walk through it yourself against the basics: one logical "
+            "concern per PR, clear module boundaries, named intent, "
+            "tested behaviour."
+        )
 
     def _emit_review_posted(
         self,
