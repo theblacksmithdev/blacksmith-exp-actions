@@ -186,7 +186,83 @@ I'd lean #3 long-term, #1 for first ship if the apprentice cohort is small and v
 
 ---
 
-## 6. Storage hints (not requirements)
+## 6. App installation token broker
+
+The reviewer used to ship the App's RSA private key as a per-repo secret on every apprentice (`BLACKSMITH_REVIEWER_PRIVATE_KEY`). That makes provisioning easy but means a compromised apprentice repo leaks an App-wide credential — every other apprentice's Lars identity is impersonable from there. The broker keeps the private key on Blacksmith infrastructure and hands out per-call installation tokens instead.
+
+The action ships broker support as of `v1.5.3` (`reviewer/action.yml` input `app-token-broker-url`). It's a no-op until the endpoint exists.
+
+### Endpoint
+
+```
+POST {broker-url}
+```
+
+### Request
+
+```http
+Authorization: Bearer <github-actions-oidc-jwt>
+Content-Type: application/json
+
+{
+  "app_id": "3948048"
+}
+```
+
+- The bearer JWT is signed by GitHub Actions and contains claims `repository`, `actor`, `repository_owner`, `workflow_ref`, `sub`, `aud`, `exp`, `iss`. Audience is configured by the action and defaults to the broker URL.
+- The body's `app_id` lets one broker serve multiple persona Apps later (Lars + Ravi + Tunde + Rosa). For v1 you can assume `3948048` and reject anything else.
+
+### Server-side flow
+
+1. Read the bearer JWT from `Authorization`. Verify signature against GitHub's JWKS at `https://token.actions.githubusercontent.com/.well-known/jwks`. Cache the JWKS — rotate at least every 24h.
+2. Validate `aud` matches what you advertise, `exp` is in the future, `iss` is `https://token.actions.githubusercontent.com`.
+3. Read the `repository` claim. This is `owner/name` — the apprentice repo making the call.
+4. Look up the App's installation on that repo: `GET /repos/{owner}/{name}/installation` authenticated as the App. The App-level JWT is signed in-process with the private key, claims `iss = app_id` and `exp ≤ 10 minutes ahead`.
+5. If the App isn't installed there, return `403 Forbidden`. Otherwise extract `installation_id` from the response.
+6. Mint the installation token: `POST /app/installations/{installation_id}/access_tokens` with the App-level JWT. You can narrow the returned token's permissions and `repository_ids` here if you want a tighter blast radius than the App's full grant.
+7. Return the token to the action.
+
+### Response
+
+```http
+200 OK
+{
+  "token": "ghs_xxxxxxxxxxxxxxxxxxxxxxxx",
+  "expires_at": "2026-06-30T14:32:00Z"
+}
+```
+
+The action requires `token`. `expires_at` is informational — the action's run finishes in seconds, so expiry doesn't affect a single run, but it's useful in the broker's own audit log.
+
+### Error responses
+
+| Status | Cause |
+|---|---|
+| `400 Bad Request` | Missing/malformed JSON, missing `app_id`. |
+| `401 Unauthorized` | OIDC JWT missing, malformed, signature invalid, expired, wrong `aud` or `iss`. |
+| `403 Forbidden` | OIDC verified but the App isn't installed on the calling `repository`, or policy denies (allowlist mismatch). |
+| `404 Not Found` | Unknown `app_id`. |
+| `502 Bad Gateway` | GitHub API call to mint the installation token failed upstream. |
+| `503 Service Unavailable` | Broker is degraded. |
+
+The action surfaces the broker's response body verbatim in the apprentice's workflow log via `core.setFailed`, so messages should be informative but not leak internals — don't echo the JWT back, don't dump stack traces.
+
+### Private key storage
+
+The App PEM lives on infrastructure. Store it in whatever secret manager you already use (AWS Secrets Manager / GCP Secret Manager / Vault / Doppler). The broker process reads it at startup or lazily — not from a repo. Rotation happens independent of any apprentice repo: generate a new key in the App settings, write it to the secret manager, restart the broker. Apprentice repos see no change.
+
+### Optional policy hooks
+
+Both server-side, both worth thinking about before public rollout:
+
+- **Project allowlist.** Even if the App is installed somewhere unexpected, refuse to mint unless the calling `repository` is also recorded as a Blacksmith project. Lookup in your project table on the `repository` claim.
+- **Workflow-ref allowlist.** OIDC tokens contain `workflow_ref` (e.g. `apprentice/repo/.github/workflows/blacksmith-review.yml@refs/heads/main`). Refuse to mint unless the workflow ref matches a pattern. Prevents a malicious apprentice from constructing an arbitrary workflow that grabs Lars's identity.
+
+Neither is needed for v1 vetted cohort. Both are real hardening for general rollout.
+
+---
+
+## 7. Storage hints (not requirements)
 
 Rough sketch — design as you see fit:
 
@@ -199,7 +275,7 @@ Project ↔ repo is one-to-one and lives on the `Project` table you already have
 
 ---
 
-## 7. Out of scope for first ship
+## 8. Out of scope for first ship
 
 - Bulk import of past PRs.
 - Cross-PR memory queries (Lars asking "what have I flagged for this apprentice before?"). Build later from the persisted history.
@@ -208,13 +284,14 @@ Project ↔ repo is one-to-one and lives on the `Project` table you already have
 
 ---
 
-## 8. Definition of done
+## 9. Definition of done
 
 The receiver is shippable when:
 
 1. `POST /review-posted` accepts the schema in §1 and `curl`-tested locally returns 2xx.
-2. App webhooks (§3) are enabled on `lars-blacksmith-exp` with a verified signature path, and at least one event lands in storage end-to-end.
-3. Auth scheme (§5) is decided and documented.
-4. Conversation endpoints (§2) can stay stubbed for the v1 receiver — they're not on the critical path until we move Lars off stateless inference.
+2. The App-token broker (§6) is deployed and an end-to-end test mints a working installation token for a sample apprentice repo. This is the critical-path blocker for moving off per-repo private-key secrets.
+3. App webhooks (§3) are enabled on `lars-blacksmith-exp` with a verified signature path, and at least one event lands in storage end-to-end.
+4. Auth scheme (§5) is decided and documented.
+5. Conversation endpoints (§2) can stay stubbed for the v1 receiver — they're not on the critical path until we move Lars off stateless inference.
 
-When you ship §1 and §3, ping back and we'll drop the no-op stubs in the action and cut a `v1.6.0` of `blacksmith-exp-actions` that actually emits.
+When you ship §1, §6, and §3, ping back and we'll drop the no-op stubs in the action, flip this repo's own `blacksmith-review.yml` over to broker mode, and cut a `v1.6.0` of `blacksmith-exp-actions`.

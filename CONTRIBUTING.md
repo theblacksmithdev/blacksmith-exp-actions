@@ -221,15 +221,25 @@ The App ID is hardcoded as the default of the `app-id` input in `reviewer/action
 
 Per-persona apps (Senior Frontend, Senior Backend, …) ship as separate registrations under the same naming convention (`blacksmith-frontend-senior`, etc.) — one App per identity is what gives each one a distinct face on PRs. Each persona action overrides the `app-id` default.
 
-### Credential distribution — **open decision**
+### Credential distribution — token broker
 
-The workflow needs the App's private key at job start. Three options, blast-radius vs. operational cost:
+The workflow needs the App's private key at job start. We picked the OIDC-based token broker (originally option 3 of the open decision). The action ships broker support as of `v1.5.3` via the `app-token-broker-url` input on `reviewer/action.yml`.
 
-1. **Per-repo secrets, automated by the Experience.** Experience's OAuth App (`Blacksmith Experience`) already holds `repo` scope on the apprentice's behalf. At provisioning time it writes `BLACKSMITH_REVIEWER_PRIVATE_KEY` into the apprentice's repo secrets via `PUT /repos/{owner}/{repo}/actions/secrets/{name}` (libsodium-encrypted). Apprentice never touches secrets manually. **Caveat**: an apprentice with repo admin can extract the key via their own malicious workflow (`run: echo "${{ secrets.BLACKSMITH_REVIEWER_PRIVATE_KEY }}" | base64`) and impersonate the bot on every other apprentice repo. Acceptable for vetted-cohort phase, not for general release.
-2. **Per-org App registration.** Each apprentice org gets its own App (different App ID + key, same name/avatar). A leaked key only impersonates within that one org. Correct blast radius. Provisioning cost: Experience must register an App on each new apprentice org via the GitHub API.
-3. **Centralized token broker.** Workflow uses GitHub OIDC (`id-token: write`, free, no setup) to prove "I'm running in workflow X of repo Y at commit Z." Sends OIDC token to a Blacksmith-hosted endpoint that validates the claim, confirms the App is installed on repo Y, mints a scoped installation token using the private key it holds, returns it. Private key never leaves Blacksmith infrastructure. Apprentice repos hold zero secrets. Real infra to deploy and operate (~100 LOC service + uptime monitoring).
+The flow:
 
-The current README workflow assumes option 1. Before this ships to real apprentices outside vetted cohorts, pick 2 or 3.
+- Apprentice workflow grants `permissions: id-token: write` and mints a GitHub Actions OIDC JWT.
+- The action POSTs the JWT to the broker (Blacksmith-hosted endpoint).
+- The broker verifies the JWT against GitHub's JWKS, confirms the App is installed on the calling repo, mints a 1-hour installation token using the private key it holds centrally, returns it.
+- The action uses the installation token to post the review as Lars.
+
+Apprentice repos hold zero App secrets. The private key never leaves Blacksmith infrastructure. Rotation happens broker-side without touching any apprentice repo.
+
+**What's still owed**: the broker endpoint itself. Full server-side spec lives in [`docs/EXPERIENCE_BACKEND_CONTRACT.md`](./docs/EXPERIENCE_BACKEND_CONTRACT.md) §6 (auth verification, installation lookup, error semantics, policy hooks). Until that ships, `reviewer/action.yml` still supports the `app-private-key` input as a fallback so this repo and any in-flight apprentice repos keep working.
+
+**Discarded alternatives** (kept as context for the decision):
+
+- **Per-repo secrets, automated by the Experience.** Experience's OAuth App writes `BLACKSMITH_REVIEWER_PRIVATE_KEY` into each apprentice repo via `PUT /repos/{owner}/{repo}/actions/secrets/{name}` (libsodium-encrypted). Operationally simple — no server to run. But an apprentice with repo admin extracts the key via a malicious workflow and impersonates the bot across every other apprentice repo. Acceptable for vetted cohorts, not for general release. This is the path we used before broker support landed.
+- **Per-org App registration.** One App per apprentice org. Leak isolates to one org. Correct blast radius but linear provisioning cost — Experience must register an App on each new apprentice org via the GitHub API. Broker achieves the same isolation without the per-org App ceremony.
 
 ---
 
