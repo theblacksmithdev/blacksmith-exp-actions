@@ -3,8 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*.*.*"]
   pull_request:
-  workflow_call:
 
 jobs:
   check:
@@ -31,3 +31,54 @@ jobs:
 
       - name: Test
         run: pytest
+
+  release:
+    # Cuts a release only when CI has passed on a vX.Y.Z tag. Same job
+    # runs for branch pushes and PRs but no-ops via the `if` gate, so
+    # there's nothing to skip-list.
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        # The release contract is "tags are cut from main". Refuse to
+        # publish from a feature branch or detached commit so a stray
+        # `git push origin v1.2.3` from elsewhere can't ship.
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not an ancestor of origin/main; refusing to release."
+            exit 1
+          fi
+
+      - name: Move the major-version tag
+        # Standard composite-action release pattern: consumers pin to
+        # @vN and the major tag slides forward to each new patch on
+        # the same major line. This is an intentional force-push of a
+        # tag (not a branch) — anyone using @v1 has opted into a
+        # moving reference, as documented in CONTRIBUTING.md.
+        run: |
+          MAJOR="v$(printf '%s' "$GITHUB_REF_NAME" | sed -E 's/^v([0-9]+)\..*/\1/')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$MAJOR" "$GITHUB_SHA"
+          git push origin "$MAJOR" --force
+          echo "moved $MAJOR -> $GITHUB_SHA"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # --verify-tag confirms the tag exists at this exact commit
+        # before publishing, as paranoia against a race where the tag
+        # got rewritten between push and release.
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag

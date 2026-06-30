@@ -279,11 +279,11 @@ git tag v1.6.0
 git push origin v1.6.0
 ```
 
-The `Release` workflow (`.github/workflows/release.yml`) then:
+CI (`.github/workflows/ci.yml`) then:
 
-1. Re-runs the full CI suite against the tagged commit.
-2. Refuses to publish if the tag isn't an ancestor of `origin/main`.
+1. Runs the full check suite (compile / lint / typecheck / tests) against the tagged commit.
+2. If the `check` job passes, the `release` job kicks in. It refuses to publish if the tag isn't an ancestor of `origin/main`.
 3. Force-updates the matching major tag (`v1` for `v1.x.y`) to the same commit.
 4. Creates a GitHub Release with auto-generated notes from commits since the previous tag.
 
-If CI fails on the tag, delete the tag locally and remotely, fix the issue on `main`, and re-tag. Never push a release tag from a feature branch — the workflow will refuse it.
+If `check` fails on the tag, delete the tag locally and remotely, fix the issue on `main`, and re-tag. Never push a release tag from a feature branch — the workflow will refuse it.
