@@ -271,19 +271,23 @@ These require **GitHub App webhooks** on `lars-blacksmith-exp`, routed to a Blac
 
 Tags follow `vMAJOR.MINOR.PATCH`. A moving `v1` tag tracks the latest 1.x release. The Experience product pins workflows to `@v1` — rolling the tag forward propagates fixes to every active apprentice repo without per-repo edits.
 
-Cut a release by tagging a commit on `main` and pushing the tag:
+**Every green push to `main` cuts a release automatically.** CI (`.github/workflows/ci.yml`) runs the full check suite, and if it passes, the `release` job:
+
+1. Reads the latest existing `vX.Y.Z` tag and bumps the patch number (`v1.5.1` → `v1.5.2`).
+2. Tags the commit with the new version and force-moves the matching major tag (`v1`) to the same commit.
+3. Creates a GitHub Release with auto-generated notes from commits since the previous tag.
+
+Concurrency is serialized via a `release` group so two back-to-back pushes can't both claim the same next version.
+
+### Cutting a minor or major bump
+
+The auto-bump only increments the patch number. For a `v1.6.0` or `v2.0.0`, create the tag manually **before** pushing the commits that should be part of it:
 
 ```bash
 git checkout main && git pull
-git tag v1.6.0
-git push origin v1.6.0
+git tag v1.6.0                          # create the tag locally
+git push origin v1.6.0                  # push it; release workflow does not fire (no main push)
+# next push to main will compute v1.6.1 from v1.6.0, not v1.5.2 from v1.5.1
 ```
 
-CI (`.github/workflows/ci.yml`) then:
-
-1. Runs the full check suite (compile / lint / typecheck / tests) against the tagged commit.
-2. If the `check` job passes, the `release` job kicks in. It refuses to publish if the tag isn't an ancestor of `origin/main`.
-3. Force-updates the matching major tag (`v1` for `v1.x.y`) to the same commit.
-4. Creates a GitHub Release with auto-generated notes from commits since the previous tag.
-
-If `check` fails on the tag, delete the tag locally and remotely, fix the issue on `main`, and re-tag. Never push a release tag from a feature branch — the workflow will refuse it.
+If `check` fails on a `main` push, no tag is created and no release is published. Fix the issue and push again — the next green push picks up where the last one would have left off.

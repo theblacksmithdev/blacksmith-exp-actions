@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*.*.*"]
   pull_request:
 
 jobs:
@@ -33,52 +32,64 @@ jobs:
         run: pytest
 
   release:
-    # Cuts a release only when CI has passed on a vX.Y.Z tag. Same job
-    # runs for branch pushes and PRs but no-ops via the `if` gate, so
-    # there's nothing to skip-list.
+    # Every green push to main becomes a release. The patch number
+    # auto-increments from the latest existing vX.Y.Z tag, and the
+    # matching major tag (v1 for v1.x.y) slides forward to the new
+    # commit. PRs and non-main pushes skip via the `if` gate.
     needs: check
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      # Serialize releases so two back-to-back main pushes don't both
+      # try to claim the same next version.
+      group: release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # need full history + tags for version computation
 
-      - name: Verify tag is on main
-        # The release contract is "tags are cut from main". Refuse to
-        # publish from a feature branch or detached commit so a stray
-        # `git push origin v1.2.3` from elsewhere can't ship.
+      - name: Compute next version
+        id: ver
         run: |
-          git fetch --quiet origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not an ancestor of origin/main; refusing to release."
-            exit 1
+          git fetch --tags --quiet
+          LAST=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n1)
+          if [ -z "$LAST" ]; then
+            NEXT="v1.0.0"
+          else
+            NEXT=$(echo "$LAST" | awk -F. '{printf "%s.%s.%d", $1, $2, $3+1}')
           fi
+          MAJOR="v$(printf '%s' "$NEXT" | sed -E 's/^v([0-9]+)\..*/\1/')"
+          {
+            echo "next=$NEXT"
+            echo "major=$MAJOR"
+          } >> "$GITHUB_OUTPUT"
+          echo "next: $NEXT  major: $MAJOR  previous: ${LAST:-<none>}"
 
-      - name: Move the major-version tag
+      - name: Tag commit and move major tag
         # Standard composite-action release pattern: consumers pin to
         # @vN and the major tag slides forward to each new patch on
-        # the same major line. This is an intentional force-push of a
-        # tag (not a branch) — anyone using @v1 has opted into a
-        # moving reference, as documented in CONTRIBUTING.md.
+        # the same major line. The major tag force-push is intentional;
+        # anyone using @v1 has opted into a moving reference, as
+        # documented in CONTRIBUTING.md.
+        env:
+          NEXT: ${{ steps.ver.outputs.next }}
+          MAJOR: ${{ steps.ver.outputs.major }}
         run: |
-          MAJOR="v$(printf '%s' "$GITHUB_REF_NAME" | sed -E 's/^v([0-9]+)\..*/\1/')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$NEXT" "$GITHUB_SHA"
           git tag -f "$MAJOR" "$GITHUB_SHA"
+          git push origin "$NEXT"
           git push origin "$MAJOR" --force
-          echo "moved $MAJOR -> $GITHUB_SHA"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        # --verify-tag confirms the tag exists at this exact commit
-        # before publishing, as paranoia against a race where the tag
-        # got rewritten between push and release.
+          NEXT: ${{ steps.ver.outputs.next }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            --verify-tag
+          gh release create "$NEXT" \
+            --title "$NEXT" \
+            --generate-notes
