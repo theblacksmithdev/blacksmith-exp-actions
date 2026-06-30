@@ -11,7 +11,6 @@ from blacksmith.core.oidc import (
     mint_id_token,
 )
 
-
 _VALID_ENV = {
     "ACTIONS_ID_TOKEN_REQUEST_URL": "https://gha.test/oidc/request",
     "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token-xyz",
@@ -43,21 +42,18 @@ class TestMintIdToken:
             assert kwargs["headers"]["Authorization"] == "Bearer request-token-xyz"
 
     def test_missing_env_raises_unavailable(self) -> None:
-        with mock.patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(OidcUnavailable):
-                mint_id_token("https://aud")
+        with mock.patch.dict("os.environ", {}, clear=True), pytest.raises(OidcUnavailable):
+            mint_id_token("https://aud")
 
     def test_partial_env_raises_unavailable(self) -> None:
         # URL set but token missing — same outcome.
         env = {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://gha.test/oidc/request"}
-        with mock.patch.dict("os.environ", env, clear=True):
-            with pytest.raises(OidcUnavailable):
-                mint_id_token("https://aud")
+        with mock.patch.dict("os.environ", env, clear=True), pytest.raises(OidcUnavailable):
+            mint_id_token("https://aud")
 
     def test_empty_audience_raises(self) -> None:
-        with mock.patch.dict("os.environ", _VALID_ENV, clear=True):
-            with pytest.raises(OidcError):
-                mint_id_token("")
+        with mock.patch.dict("os.environ", _VALID_ENV, clear=True), pytest.raises(OidcError):
+            mint_id_token("")
 
     def test_http_failure_raises_oidc_error(self) -> None:
         with mock.patch.dict("os.environ", _VALID_ENV, clear=True), \

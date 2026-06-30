@@ -26,7 +26,6 @@ import os
 
 import httpx
 
-
 __all__ = ["OidcError", "OidcUnavailable", "mint_id_token"]
 
 _log = logging.getLogger(__name__)
